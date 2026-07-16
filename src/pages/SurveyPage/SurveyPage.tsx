@@ -1,233 +1,202 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useState } from "react";
+import { useParams } from "react-router-dom";
 import "./styles.scss";
 import Button from "../../components/Button/Button";
 
 import StarIcon from "../../shared/images/star-ico.svg";
 import StarFilledIcon from "../../shared/images/star-filled-ico.svg";
-import { getSurvey, sendSurvey } from "../../api/csat";
+import { getSurvey, sendSurvey, type SurveyQuestion } from "../../api/csat";
 import { AJAXErrors } from "../../api/errors";
 
-class SurveyPage extends Tarakan.Component {
-    state = {
-        title: "",
-        surveyId: "",
-        questionCount: 10,
-        questionIndex: 0,
-        starCountHover: 0,
-        starCountSelected: 0,
-        description: "Супер улётный опрос",
-        questions: [],
-        answers: [],
-        surveyPhase: 0,
-    };
+function SurveyPage() {
+    const { id } = useParams<{ id: string }>();
 
-    async getSurvey() {
-        if (this.app.urlParams.id) {
-            const { code, survey } = await getSurvey(this.app.urlParams.id);
+    const [title, setTitle] = useState("");
+    const [surveyId, setSurveyId] = useState("");
+    const [questionCount, setQuestionCount] = useState(10);
+    const [questionIndex, setQuestionIndex] = useState(0);
+    const [starCountHover, setStarCountHover] = useState(0);
+    const [starCountSelected, setStarCountSelected] = useState(0);
+    const [description, setDescription] = useState("Супер улётный опрос");
+    const [questions, setQuestions] = useState<SurveyQuestion[]>([]);
+    const [answers, setAnswers] = useState<{ questionId: string; value: number }[]>(
+        [],
+    );
+    const [surveyPhase, setSurveyPhase] = useState(0);
+
+    async function fetchSurvey() {
+        if (id) {
+            const { code, survey } = await getSurvey(id);
             if (code === AJAXErrors.NoError) {
-                this.setState({
-                    surveyId: survey.surveyId,
-                    description: survey.description,
-                    questions: survey.questions,
-                    title: survey.title,
-                    questionCount: survey.questions.length,
-                });
+                setSurveyId(survey!.surveyId);
+                setDescription(survey!.description);
+                setQuestions(survey!.questions);
+                setTitle(survey!.title);
+                setQuestionCount(survey!.questions.length);
             }
         }
     }
 
-    nextQuestion() {
-        this.setState({
-            questionIndex: this.state.questionIndex + 1,
-            starCountHover: 0,
-            starCountSelected: 0,
-            answers: [
-                ...this.state.answers,
-                {
-                    questionId:
-                        this.state.questions[this.state.questionIndex]
-                            .questionId,
-                    value: this.state.starCountSelected,
-                },
-            ],
-        });
-    }
+    useEffect(() => {
+        fetchSurvey();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    skipQuestion() {
-        this.setState({
-            questionIndex: this.state.questionIndex + 1,
-            starCountHover: 0,
-            starCountSelected: 0,
-            answers: [
-                ...this.state.answers,
-                {
-                    questionId:
-                        this.state.questions[this.state.questionIndex]
-                            .questionId,
-                    value: 0,
-                },
-            ],
-        });
-    }
-
-    async sendSurvey(f) {
-        const code = await sendSurvey(this.state.surveyId, [
-            ...this.state.answers,
+    function nextQuestion() {
+        setAnswers([
+            ...answers,
             {
-                questionId:
-                    this.state.questions[this.state.questionIndex].questionId,
-                value: f ? 0 : this.state.starCountSelected,
+                questionId: questions[questionIndex].questionId,
+                value: starCountSelected,
+            },
+        ]);
+        setQuestionIndex(questionIndex + 1);
+        setStarCountHover(0);
+        setStarCountSelected(0);
+    }
+
+    function skipQuestion() {
+        setAnswers([
+            ...answers,
+            {
+                questionId: questions[questionIndex].questionId,
+                value: 0,
+            },
+        ]);
+        setQuestionIndex(questionIndex + 1);
+        setStarCountHover(0);
+        setStarCountSelected(0);
+    }
+
+    async function handleSendSurvey(f: boolean) {
+        const code = await sendSurvey(surveyId, [
+            ...answers,
+            {
+                questionId: questions[questionIndex].questionId,
+                value: f ? 0 : starCountSelected,
             },
         ]);
         if (code === AJAXErrors.NoError) {
-            this.setState({
-                surveyPhase: 2,
-            });
+            setSurveyPhase(2);
         }
     }
 
-    init() {
-        this.getSurvey();
-    }
-
-    render() {
-        return (
-            <div className="survey">
-                <div className="survey__title">
-                    <div className="survey__title__name">
-                        <div className="survey__title__name__h">
-                            {this.state.title}
-                        </div>
-                        <div className="survey__title__name__counter">
-                            {
-                                [
-                                    "",
-                                    `Вопрос ${this.state.questionIndex + 1} из ${this.state.questionCount}`,
-                                    "Пройден",
-                                ][this.state.surveyPhase]
-                            }
-                        </div>
-                    </div>
-                    <div className="survey__title__line">
-                        {this.state.surveyPhase !== 0 && (
-                            <div
-                                className="survey__title__line__progress"
-                                style={`width: ${((this.state.questionIndex + 1) / this.state.questionCount) * 100}%`}
-                            />
-                        )}
-                    </div>
-                </div>
-                <div className="survey__content">
-                    <div className="survey__content__question">
+    return (
+        <div className="survey">
+            <div className="survey__title">
+                <div className="survey__title__name">
+                    <div className="survey__title__name__h">{title}</div>
+                    <div className="survey__title__name__counter">
                         {
                             [
-                                this.state.description,
-                                this.state.questions[this.state.questionIndex]
-                                    ?.text,
-                                "Спасибо за прохождение опроса. Нам важен каждый отзыв.",
-                            ][this.state.surveyPhase]
+                                "",
+                                `Вопрос ${questionIndex + 1} из ${questionCount}`,
+                                "Пройден",
+                            ][surveyPhase]
                         }
                     </div>
-                    {this.state.surveyPhase === 1 && (
-                        <div className="survey__content__answer">
-                            {Array(10)
-                                .fill(0)
-                                .map((E, I) => (
-                                    <img
-                                        className={
-                                            this.state.starCountHover !== 0 &&
-                                            this.state.starCountHover <= I &&
-                                            this.state.starCountSelected > I
-                                                ? "survey__content__answer__star removed"
-                                                : "survey__content__answer__star"
-                                        }
-                                        src={
-                                            this.state.starCountHover > I ||
-                                            this.state.starCountSelected > I
-                                                ? StarFilledIcon
-                                                : StarIcon
-                                        }
-                                        onMouseOver={() =>
-                                            this.setState({
-                                                starCountHover: I + 1,
-                                            })
-                                        }
-                                        onMouseLeave={() =>
-                                            this.setState({ starCountHover: 0 })
-                                        }
-                                        onClick={() =>
-                                            this.setState({
-                                                starCountSelected:
-                                                    this.state.starCountHover,
-                                            })
-                                        }
-                                    />
-                                ))}
-                        </div>
-                    )}
                 </div>
-                <div className="survey__actions">
-                    {this.state.surveyPhase === 1 && (
-                        <Button
-                            className="survey__actions__skip"
-                            variant="text"
-                            title="Пропустить вопрос"
-                            onClick={() => {
-                                if (
-                                    this.state.questionIndex !==
-                                    this.state.questionCount - 1
-                                ) {
-                                    this.skipQuestion();
-                                } else {
-                                    this.sendSurvey(true);
-                                }
-                            }}
-                        />
-                    )}
-                    {this.state.surveyPhase === 1 ? (
-                        <Button
-                            className="survey__actions__next"
-                            variant="primary"
-                            title={
-                                this.state.questionIndex !==
-                                this.state.questionCount - 1
-                                    ? "Следующий вопрос"
-                                    : "Отправить"
-                            }
-                            disabled={this.state.starCountSelected === 0}
-                            onClick={() => {
-                                if (
-                                    this.state.questionIndex !==
-                                    this.state.questionCount - 1
-                                ) {
-                                    this.nextQuestion();
-                                } else {
-                                    this.sendSurvey(false);
-                                }
-                            }}
-                        />
-                    ) : (
-                        <Button
-                            className="survey__actions__next"
-                            variant="primary"
-                            title={
-                                this.state.surveyPhase === 0
-                                    ? "Поехали"
-                                    : "Закрыть"
-                            }
-                            onClick={() => {
-                                if (this.state.surveyPhase === 0) {
-                                    this.setState({ surveyPhase: 1 });
-                                } else {
-                                    window.parent.postMessage("finish");
-                                }
+                <div className="survey__title__line">
+                    {surveyPhase !== 0 && (
+                        <div
+                            className="survey__title__line__progress"
+                            style={{
+                                width: `${((questionIndex + 1) / questionCount) * 100}%`,
                             }}
                         />
                     )}
                 </div>
             </div>
-        );
-    }
+            <div className="survey__content">
+                <div className="survey__content__question">
+                    {
+                        [
+                            description,
+                            questions[questionIndex]?.text,
+                            "Спасибо за прохождение опроса. Нам важен каждый отзыв.",
+                        ][surveyPhase]
+                    }
+                </div>
+                {surveyPhase === 1 && (
+                    <div className="survey__content__answer">
+                        {Array(10)
+                            .fill(0)
+                            .map((E, I) => (
+                                <img
+                                    key={I}
+                                    className={
+                                        starCountHover !== 0 &&
+                                        starCountHover <= I &&
+                                        starCountSelected > I
+                                            ? "survey__content__answer__star removed"
+                                            : "survey__content__answer__star"
+                                    }
+                                    src={
+                                        starCountHover > I ||
+                                        starCountSelected > I
+                                            ? StarFilledIcon
+                                            : StarIcon
+                                    }
+                                    onMouseOver={() => setStarCountHover(I + 1)}
+                                    onMouseLeave={() => setStarCountHover(0)}
+                                    onClick={() =>
+                                        setStarCountSelected(starCountHover)
+                                    }
+                                />
+                            ))}
+                    </div>
+                )}
+            </div>
+            <div className="survey__actions">
+                {surveyPhase === 1 && (
+                    <Button
+                        className="survey__actions__skip"
+                        variant="text"
+                        title="Пропустить вопрос"
+                        onClick={() => {
+                            if (questionIndex !== questionCount - 1) {
+                                skipQuestion();
+                            } else {
+                                handleSendSurvey(true);
+                            }
+                        }}
+                    />
+                )}
+                {surveyPhase === 1 ? (
+                    <Button
+                        className="survey__actions__next"
+                        variant="primary"
+                        title={
+                            questionIndex !== questionCount - 1
+                                ? "Следующий вопрос"
+                                : "Отправить"
+                        }
+                        disabled={starCountSelected === 0}
+                        onClick={() => {
+                            if (questionIndex !== questionCount - 1) {
+                                nextQuestion();
+                            } else {
+                                handleSendSurvey(false);
+                            }
+                        }}
+                    />
+                ) : (
+                    <Button
+                        className="survey__actions__next"
+                        variant="primary"
+                        title={surveyPhase === 0 ? "Поехали" : "Закрыть"}
+                        onClick={() => {
+                            if (surveyPhase === 0) {
+                                setSurveyPhase(1);
+                            } else {
+                                window.parent.postMessage("finish");
+                            }
+                        }}
+                    />
+                )}
+            </div>
+        </div>
+    );
 }
 
 export default SurveyPage;
