@@ -1,7 +1,26 @@
-// Временная заглушка на время постраничной миграции с Tarakan на React.
-// Наполняется реальными провайдерами стора и роутами по мере переноса страниц.
+import { Route, Routes } from "react-router-dom";
+
+import { UserStoreProvider } from "./stores/UserStore";
+import { ProductsStoreProvider } from "./stores/ProductsStore";
+import { CSATStoreProvider } from "./stores/CSATStore";
+
+// Маршруты добавляются по мере переноса страниц с Tarakan на React
+// (см. src/index.ts в истории git для полного списка).
 function App() {
-    return <div>Bazaar — идёт миграция на React</div>;
+    return (
+        <UserStoreProvider>
+            <ProductsStoreProvider>
+                <CSATStoreProvider>
+                    <Routes>
+                        <Route
+                            path="*"
+                            element={<div>Bazaar — идёт миграция на React</div>}
+                        />
+                    </Routes>
+                </CSATStoreProvider>
+            </ProductsStoreProvider>
+        </UserStoreProvider>
+    );
 }
 
 export default App;
