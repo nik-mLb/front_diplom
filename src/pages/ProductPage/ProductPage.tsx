@@ -1,4 +1,5 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams } from "react-router-dom";
 import Header from "../../components/Header/Header";
 import Footer from "../../components/Footer/Footer";
 import "./styles.scss";
@@ -25,529 +26,473 @@ import InfinityList from "../../components/InfinityList/InfinityList";
 import { convertMoney } from "../AdminPage/AdminPage";
 import ProductCard from "../../components/ProductCard/ProductCard";
 import { getRecommendations } from "../../api/recommendation";
+import { useUserStore } from "../../stores/UserStore";
 
-class ProductPage extends Tarakan.Component {
-    state: any = {
-        product: null,
-        commentsOffset: 0,
-        comments: [],
-        addReviewModal: false,
+function ProductPage() {
+    const navigate = useNavigate();
+    const { productId } = useParams();
+    const userStore = useUserStore();
 
-        showNotAuthAlert: false,
-        showNotAuthAlertCart: false,
+    const [product, setProduct] = useState<any>(null);
+    const [commentsOffset, setCommentsOffset] = useState(0);
+    const [comments, setComments] = useState<any[]>([]);
+    const [addReviewModal, setAddReviewModal] = useState(false);
 
-        showComments: false,
-        fetching: false,
-        recommendations: [],
-    };
+    const [showNotAuthAlert, setShowNotAuthAlert] = useState(false);
+    const [showNotAuthAlertCart, setShowNotAuthAlertCart] = useState(false);
+    const [twiceReview, setTwiceReview] = useState(false);
 
-    async fetchProduct() {
-        const productId = this.app.urlParams.productId;
+    const [showComments, setShowComments] = useState(false);
+    const [recommendations, setRecommendations] = useState<any[]>([]);
+
+    const fetchingRef = useRef(false);
+    const productRef = useRef(product);
+    productRef.current = product;
+    const commentsOffsetRef = useRef(commentsOffset);
+    commentsOffsetRef.current = commentsOffset;
+    const commentsRef = useRef(comments);
+    commentsRef.current = comments;
+
+    const isFirstMountRef = useRef(true);
+
+    async function fetchProduct(currentProductId: string) {
         const { code: basketCode, data } = await getBasket();
         let quantity = 0;
         const basket = new Set();
 
         if (basketCode === AJAXErrors.NoError) {
-            for (const item of data.products) {
-                if (item.productId === productId) {
+            for (const item of data!.products) {
+                if (item.productId === currentProductId) {
                     quantity = item.quantity;
                     break;
                 }
             }
 
-            data.products.forEach((product) => basket.add(product.productId));
+            data!.products.forEach((item) => basket.add(item.productId));
         }
 
-        const { code: productCode, product } = await getProduct(productId);
+        const { code: productCode, product: fetchedProduct } =
+            await getProduct(currentProductId);
         if (productCode === AJAXErrors.NoError) {
-            this.setState({
-                product: {
-                    ...product,
-                    quantity,
-                },
+            setProduct({
+                ...fetchedProduct,
+                quantity,
             });
-            this.fetchReviews();
+            fetchReviews(currentProductId);
         } else {
-            this.app.navigateTo("/");
+            navigate("/");
             return;
         }
 
-        const { code, products } = await getRecommendations(productId);
-        if (code === AJAXErrors.NoError) {
-            this.setState({
-                recommendations: products.map((E) => ({
-                    ...E,
-                    isInCart: basket.has(E.id),
-                })),
-            });
-        }
-    }
-
-    handleClickTab(name: any) {
-        this.setState({
-            menuOpened: name,
-        });
-    }
-
-    async handleAddProduct() {
-        let code = 0;
-
-        if (this.state.product.quantity === 0) {
-            code = await addToBasket(this.state.product.id);
-        } else {
-            code = (
-                await updateProductQuantity(
-                    this.state.product.id,
-                    this.state.product.quantity + 1,
-                )
-            ).code;
-        }
-
-        if (code === AJAXErrors.NoError) {
-            this.setState({
-                product: {
-                    ...this.state.product,
-                    quantity: this.state.product.quantity + 1,
-                },
-            });
-        }
-    }
-
-    async handleRemoveProduct() {
-        let code = 0;
-
-        if (this.state.product.quantity === 1) {
-            code = await removeFromBasket(this.state.product.id);
-        } else {
-            code = (
-                await updateProductQuantity(
-                    this.state.product.id,
-                    this.state.product.quantity - 1,
-                )
-            ).code;
-        }
-
-        if (code === AJAXErrors.NoError) {
-            this.setState({
-                product: {
-                    ...this.state.product,
-                    quantity: this.state.product.quantity - 1,
-                },
-            });
-        }
-    }
-
-    async fetchReviews() {
-        if (!this.state.product) {
-            return;
-        }
-        if (this.state.fetching) {
-            return;
-        }
-        this.state.fetching = true;
-        const { code, reviews } = await getComments(
-            this.state.product.id,
-            this.state.commentsOffset,
+        const { code, products } = await getRecommendations(
+            currentProductId as any,
         );
         if (code === AJAXErrors.NoError) {
-            this.setState({
-                commentsOffset: this.state.commentsOffset + 7,
-                comments: [...this.state.comments, ...reviews],
-                fetching: false,
-            });
-        } else {
-            this.state.fetching = false;
+            setRecommendations(
+                (products ?? []).map((item: any) => ({
+                    ...item,
+                    isInCart: basket.has(item.id),
+                })),
+            );
         }
     }
 
-    async sendReview(description: string, rating: number) {
+    async function handleAddProduct() {
+        let code: AJAXErrors;
+
+        if (productRef.current.quantity === 0) {
+            code = await addToBasket(productRef.current.id);
+        } else {
+            code = (
+                await updateProductQuantity(
+                    productRef.current.id,
+                    productRef.current.quantity + 1,
+                )
+            ).code;
+        }
+
+        if (code === AJAXErrors.NoError) {
+            setProduct({
+                ...productRef.current,
+                quantity: productRef.current.quantity + 1,
+            });
+        }
+    }
+
+    async function handleRemoveProduct() {
+        let code: AJAXErrors;
+
+        if (productRef.current.quantity === 1) {
+            code = await removeFromBasket(productRef.current.id);
+        } else {
+            code = (
+                await updateProductQuantity(
+                    productRef.current.id,
+                    productRef.current.quantity - 1,
+                )
+            ).code;
+        }
+
+        if (code === AJAXErrors.NoError) {
+            setProduct({
+                ...productRef.current,
+                quantity: productRef.current.quantity - 1,
+            });
+        }
+    }
+
+    async function fetchReviews(currentProductId: string) {
+        if (!productRef.current && !currentProductId) {
+            return;
+        }
+        if (fetchingRef.current) {
+            return;
+        }
+        fetchingRef.current = true;
+        const { code, reviews } = await getComments(
+            currentProductId ?? productRef.current.id,
+            commentsOffsetRef.current,
+        );
+        if (code === AJAXErrors.NoError) {
+            setCommentsOffset(commentsOffsetRef.current + 7);
+            setComments([...commentsRef.current, ...(reviews ?? [])]);
+            fetchingRef.current = false;
+        } else {
+            fetchingRef.current = false;
+        }
+    }
+
+    async function sendReview(description: string, rating: number) {
         const code = await sendComment(
-            this.state.product.id ?? "",
+            productRef.current?.id ?? "",
             rating,
             description,
         );
 
         if (code === AJAXErrors.NoError) {
-            this.setState({
-                comments: [
-                    {
-                        id: "0",
-                        name: this.app.store.user.value.name,
-                        surname: this.app.store.user.value.surname,
-                        imageURL: this.app.store.user.value.imageURL,
-                        rating: rating,
-                        comment: description,
-                    },
-                    ...this.state.comments,
-                ],
-                product: {
-                    ...this.state.product,
-                    reviewsCount: this.state.product.reviewsCount + 1,
-                    rating:
-                        (this.state.product.rating *
-                            this.state.product.reviewsCount +
-                            rating) /
-                        (this.state.product.reviewsCount + 1),
+            setComments([
+                {
+                    id: "0",
+                    name: userStore.value.name,
+                    surname: userStore.value.surname,
+                    imageURL: userStore.value.imageURL,
+                    rating: rating,
+                    comment: description,
                 },
-                addReviewModal: false,
+                ...commentsRef.current,
+            ]);
+            setProduct({
+                ...productRef.current,
+                reviewsCount: productRef.current.reviewsCount + 1,
+                rating:
+                    (productRef.current.rating *
+                        productRef.current.reviewsCount +
+                        rating) /
+                    (productRef.current.reviewsCount + 1),
             });
+            setAddReviewModal(false);
         }
 
-        if (code == AJAXErrors.TwiceReview) {
-            this.setState({
-                twiceReview: true,
-                addReviewModal: false,
-            });
+        if (code === AJAXErrors.TwiceReview) {
+            setTwiceReview(true);
+            setAddReviewModal(false);
         }
     }
 
-    update() {
-        if (this.app.urlParams.productId) {
+    useEffect(() => {
+        if (!productId) {
+            navigate("/");
+            return;
+        }
+        if (!isFirstMountRef.current) {
             window.scroll({
                 top: 0,
                 behavior: "smooth",
             });
-            this.fetchProduct();
-        } else {
-            this.app.navigateTo("/");
         }
-    }
+        isFirstMountRef.current = false;
+        fetchProduct(productId);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [productId]);
 
-    init() {
-        if (this.app.urlParams.productId) {
-            this.fetchProduct();
-        } else {
-            this.app.navigateTo("/");
-        }
-    }
-
-    render(props, app) {
-        return (
-            <div className="product-page">
-                <Header />
-                <main className="product-page__main">
-                    <div className="product-page__main__card">
-                        <div className="product-page__main__card__image">
-                            <img src={`${this.state.product?.image}`} />
+    return (
+        <div className="product-page">
+            <Header />
+            <main className="product-page__main">
+                <div className="product-page__main__card">
+                    <div className="product-page__main__card__image">
+                        <img src={`${product?.image}`} />
+                    </div>
+                    <div className="product-page__main__card__details">
+                        <h2
+                            className="product-page__main__card__details__title"
+                            style={{ fontWeight: "normal" }}
+                        >
+                            {product?.name}
+                        </h2>
+                        <div className="product-page__main__card__details__buyer">
+                            {product?.seller.title}
                         </div>
-                        <div className="product-page__main__card__details">
-                            <h2
-                                className="product-page__main__card__details__title"
-                                style="font-weight: normal"
-                            >
-                                {this.state.product?.name}
-                            </h2>
-                            <div className="product-page__main__card__details__buyer">
-                                {this.state.product?.seller.title}
-                            </div>
-                            {this.state.product && (
-                                <div className="product-page__main__card__details__action">
-                                    <span
-                                        className={`product-page__main__card__details__action__price${this.state.product.discountPrice !== 0 ? "-discount" : "-default"}`}
-                                    >
-                                        {convertMoney(
-                                            this.state.product.discountPrice ||
-                                                this.state.product.price,
-                                        )}
-                                    </span>
-                                    {this.state.product.discountPrice !== 0 && (
-                                        <span className="product-page__main__card__details__action__discount">
-                                            (-
-                                            {parseInt(
-                                                `${((this.state.product.price - this.state.product.discountPrice) / this.state.product.price) * 100}`,
-                                            )}
-                                            %)
-                                        </span>
+                        {product && (
+                            <div className="product-page__main__card__details__action">
+                                <span
+                                    className={`product-page__main__card__details__action__price${product.discountPrice !== 0 ? "-discount" : "-default"}`}
+                                >
+                                    {convertMoney(
+                                        product.discountPrice ||
+                                            product.price,
                                     )}
-                                    <div className="product-page__main__card__details__action__buy">
-                                        <Button
-                                            disabled={
-                                                this.state.product.quantity ===
-                                                0
-                                            }
-                                            size="m"
-                                            iconSrc={cartSubIcon}
-                                            className="no-text"
-                                            onClick={() => {
-                                                if (
-                                                    !app.store.user.value.login
-                                                ) {
-                                                    this.setState({
-                                                        showNotAuthAlertCart:
-                                                            true,
-                                                    });
-                                                } else {
-                                                    this.handleRemoveProduct();
-                                                }
-                                            }}
-                                        />
-                                        <Button
-                                            disabled={
-                                                this.state.product
-                                                    .remainQuantity ?? 0 < 0
-                                            }
-                                            size="m"
-                                            title={
-                                                this.state.product.quantity ===
-                                                0
-                                                    ? "Добавить в корзину"
-                                                    : `Добавлено ${this.state.product.quantity} шт`
-                                            }
-                                            className={
-                                                this.state.product.quantity !==
-                                                0
-                                                    ? "product-page__main__card__details__action__buy__in-cart"
-                                                    : "product-page__main__card__details__action__buy"
-                                            }
-                                            onClick={() => {
-                                                if (
-                                                    !app.store.user.value.login
-                                                ) {
-                                                    this.setState({
-                                                        showNotAuthAlertCart:
-                                                            true,
-                                                    });
-                                                } else {
-                                                    this.handleAddProduct();
-                                                }
-                                            }}
-                                        />
-                                        <Button
-                                            disabled={
-                                                this.state.product
-                                                    .remainQuantity === 0 ||
-                                                this.state.product
-                                                    .remainQuantity < 0
-                                            }
-                                            size="m"
-                                            iconSrc={cartAddIcon}
-                                            className="no-text"
-                                            onClick={() => {
-                                                if (
-                                                    !app.store.user.value.login
-                                                ) {
-                                                    this.setState({
-                                                        showNotAuthAlertCart:
-                                                            true,
-                                                    });
-                                                } else {
-                                                    this.handleAddProduct();
-                                                }
-                                            }}
-                                        />
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    </div>
-                    <div className="product-page__main__description">
-                        <h2>Описание</h2>
-                        <div className="product-page__main__description__value">
-                            {this.state.product?.description}
-                        </div>
-                    </div>
-                    <div className="product-page__main__reviews">
-                        <div className="product-page__main__reviews__title">
-                            <h2>
-                                Отзывы (
-                                <img
-                                    className="product-page__main__reviews__title__star"
-                                    src={StarFilledIcon}
-                                />
-                                {parseFloat(this.state.product?.rating).toFixed(
-                                    2,
-                                )}
-                                )
-                            </h2>
-                            {this.state.showNotAuthAlert && (
-                                <Alert
-                                    title="Необходимо войти"
-                                    content="Чтобы оставить отзыв, надо сначала войти в профиль"
-                                    successButtonTitle="Войти"
-                                    onSuccess={() => app.navigateTo("/signin")}
-                                    onClose={() =>
-                                        this.setState({
-                                            showNotAuthAlert: false,
-                                        })
-                                    }
-                                />
-                            )}
-                            {this.state.showNotAuthAlertCart && (
-                                <Alert
-                                    title="Необходимо войти"
-                                    content="Чтобы изменить продукты в корзине, надо сначала войти в профиль"
-                                    successButtonTitle="Войти"
-                                    onSuccess={() => app.navigateTo("/signin")}
-                                    onClose={() =>
-                                        this.setState({
-                                            showNotAuthAlertCart: false,
-                                        })
-                                    }
-                                />
-                            )}
-                            {this.state.twiceReview && (
-                                <Alert
-                                    title="Вы уже оставили отзыв"
-                                    content="Вы уже оставили свой отзыв на данный продукт"
-                                    successButtonTitle="ОК"
-                                    onSuccess={() => {
-                                        this.setState({
-                                            twiceReview: false,
-                                        });
-                                    }}
-                                    onClose={() =>
-                                        this.setState({
-                                            twiceReview: false,
-                                        })
-                                    }
-                                />
-                            )}
-                            {this.state.addReviewModal && (
-                                <CreateReviewModal
-                                    onSend={(D: any, R: any) =>
-                                        this.sendReview(D, R)
-                                    }
-                                    onClose={() =>
-                                        this.setState({ addReviewModal: false })
-                                    }
-                                />
-                            )}
-                            {this.state.comments.length !== 0 && (
-                                <Button
-                                    className="product-page__main__reviews__title__action"
-                                    title="Оставить отзыв"
-                                    variant="text"
-                                    onClick={() => {
-                                        if (app.store.user.value.login) {
-                                            this.setState({
-                                                addReviewModal: true,
-                                            });
-                                        } else {
-                                            this.setState({
-                                                showNotAuthAlert: true,
-                                            });
-                                        }
-                                    }}
-                                />
-                            )}
-                        </div>
-                        <div className="product-page__main__reviews__content">
-                            {this.state.comments.length === 0 ? (
-                                <div style="display: flex; column-gap: 8px; align-items: center">
-                                    <span>
-                                        Будьте первым, кто оставит отзыв на этот
-                                        товар!
+                                </span>
+                                {product.discountPrice !== 0 && (
+                                    <span className="product-page__main__card__details__action__discount">
+                                        (-
+                                        {parseInt(
+                                            `${((product.price - product.discountPrice) / product.price) * 100}`,
+                                        )}
+                                        %)
                                     </span>
+                                )}
+                                <div className="product-page__main__card__details__action__buy">
                                     <Button
-                                        variant="text"
-                                        title="Оставить отзыв"
-                                        size="s"
-                                        className="product-page__main__reviews__content__add-product"
+                                        disabled={product.quantity === 0}
+                                        size="m"
+                                        iconSrc={cartSubIcon}
+                                        className="no-text"
                                         onClick={() => {
-                                            if (app.store.user.value.login) {
-                                                this.setState({
-                                                    addReviewModal: true,
-                                                });
+                                            if (!userStore.value.login) {
+                                                setShowNotAuthAlertCart(true);
                                             } else {
-                                                this.setState({
-                                                    showNotAuthAlert: true,
-                                                });
+                                                handleRemoveProduct();
+                                            }
+                                        }}
+                                    />
+                                    <Button
+                                        disabled={(product.remainQuantity ?? 0) < 0}
+                                        size="m"
+                                        title={
+                                            product.quantity === 0
+                                                ? "Добавить в корзину"
+                                                : `Добавлено ${product.quantity} шт`
+                                        }
+                                        className={
+                                            product.quantity !== 0
+                                                ? "product-page__main__card__details__action__buy__in-cart"
+                                                : "product-page__main__card__details__action__buy"
+                                        }
+                                        onClick={() => {
+                                            if (!userStore.value.login) {
+                                                setShowNotAuthAlertCart(true);
+                                            } else {
+                                                handleAddProduct();
+                                            }
+                                        }}
+                                    />
+                                    <Button
+                                        disabled={
+                                            product.remainQuantity === 0 ||
+                                            product.remainQuantity < 0
+                                        }
+                                        size="m"
+                                        iconSrc={cartAddIcon}
+                                        className="no-text"
+                                        onClick={() => {
+                                            if (!userStore.value.login) {
+                                                setShowNotAuthAlertCart(true);
+                                            } else {
+                                                handleAddProduct();
                                             }
                                         }}
                                     />
                                 </div>
-                            ) : (
-                                (this.state.showComments
-                                    ? this.state.comments
-                                    : this.state.comments.slice(0, 3)
-                                ).map((comment: any) => (
-                                    <div className="product-page__main__reviews__content__comment">
-                                        <div className="product-page__main__reviews__content__comment__info">
-                                            <span className="product-page__main__reviews__content__comment__info__avatar">
-                                                <img
-                                                    className="product-page__main__reviews__content__comment__info__avatar__img"
-                                                    src={
-                                                        comment.imageURL ??
-                                                        ProfileIcon
-                                                    }
-                                                />
-                                            </span>
-                                            <span className="product-page__main__reviews__content__comment__info__author">
-                                                {comment.name}
-                                            </span>
-                                            <span className="product-page__main__reviews__content__comment__info__review">
-                                                <span className="product-page__main__reviews__content__comment__info__review__rating">
-                                                    {Array(5)
-                                                        .fill(0)
-                                                        .map((E, I) => (
-                                                            <img
-                                                                className="product-page__main__reviews__content__comment__info__review__rating__star"
-                                                                src={
-                                                                    comment.rating >
-                                                                    I
-                                                                        ? StarFilledIcon
-                                                                        : StarIcon
-                                                                }
-                                                            />
-                                                        ))}
-                                                </span>
-                                                <span className="product-page__main__reviews__content__comment__info__review__value">
-                                                    {comment.rating}
-                                                </span>
-                                            </span>
-                                        </div>
-                                        <div className="product-page__main__reviews__content__comment__description">
-                                            {comment.comment}
-                                        </div>
-                                    </div>
-                                ))
-                            )}
-                        </div>
-                        {this.state.showComments ? (
-                            <InfinityList onShow={() => this.fetchReviews()} />
-                        ) : (
-                            this.state.comments.length > 3 && (
-                                <Button
-                                    variant="text"
-                                    title="Показать все комментарии"
-                                    className="product-page__main__reviews__content__more"
-                                    onClick={() =>
-                                        this.setState({ showComments: true })
-                                    }
-                                />
-                            )
+                            </div>
                         )}
                     </div>
-                    {this.state.recommendations.length > 0 && (
-                        <h2>Возможно, Вам понравится</h2>
-                    )}
-                    <div className={`product-page__main__recommendations`}>
-                        {this.state.recommendations.map((item: any) => (
-                            <ProductCard
-                                id={`${item.id}`}
-                                inCart={item.isInCart}
-                                price={`${item.price}`}
-                                discountPrice={item.discountPrice}
-                                title={`${item.name}`}
-                                rating={`${item.rating}`}
-                                reviewsCount={`${item.reviewsCount}`}
-                                mainImageAlt={`Изображение товара ${item.name}`}
-                                mainImageSrc={item.image}
-                                onError={(err) => {
-                                    if (err === AJAXErrors.Unauthorized) {
-                                        this.setState({
-                                            showNotAuthAlertCart: true,
-                                        });
+                </div>
+                <div className="product-page__main__description">
+                    <h2>Описание</h2>
+                    <div className="product-page__main__description__value">
+                        {product?.description}
+                    </div>
+                </div>
+                <div className="product-page__main__reviews">
+                    <div className="product-page__main__reviews__title">
+                        <h2>
+                            Отзывы (
+                            <img
+                                className="product-page__main__reviews__title__star"
+                                src={StarFilledIcon}
+                            />
+                            {parseFloat(product?.rating).toFixed(2)})
+                        </h2>
+                        {showNotAuthAlert && (
+                            <Alert
+                                title="Необходимо войти"
+                                content="Чтобы оставить отзыв, надо сначала войти в профиль"
+                                successButtonTitle="Войти"
+                                onSuccess={() => navigate("/signin")}
+                                onClose={() => setShowNotAuthAlert(false)}
+                            />
+                        )}
+                        {showNotAuthAlertCart && (
+                            <Alert
+                                title="Необходимо войти"
+                                content="Чтобы изменить продукты в корзине, надо сначала войти в профиль"
+                                successButtonTitle="Войти"
+                                onSuccess={() => navigate("/signin")}
+                                onClose={() => setShowNotAuthAlertCart(false)}
+                            />
+                        )}
+                        {twiceReview && (
+                            <Alert
+                                title="Вы уже оставили отзыв"
+                                content="Вы уже оставили свой отзыв на данный продукт"
+                                successButtonTitle="ОК"
+                                onSuccess={() => setTwiceReview(false)}
+                                onClose={() => setTwiceReview(false)}
+                            />
+                        )}
+                        {addReviewModal && (
+                            <CreateReviewModal
+                                onSend={(D: any, R: any) => sendReview(D, R)}
+                                onClose={() => setAddReviewModal(false)}
+                            />
+                        )}
+                        {comments.length !== 0 && (
+                            <Button
+                                className="product-page__main__reviews__title__action"
+                                title="Оставить отзыв"
+                                variant="text"
+                                onClick={() => {
+                                    if (userStore.value.login) {
+                                        setAddReviewModal(true);
+                                    } else {
+                                        setShowNotAuthAlert(true);
                                     }
                                 }}
                             />
-                        ))}
+                        )}
                     </div>
-                </main>
-                <Footer />
-            </div>
-        );
-    }
+                    <div className="product-page__main__reviews__content">
+                        {comments.length === 0 ? (
+                            <div
+                                style={{
+                                    display: "flex",
+                                    columnGap: "8px",
+                                    alignItems: "center",
+                                }}
+                            >
+                                <span>
+                                    Будьте первым, кто оставит отзыв на этот
+                                    товар!
+                                </span>
+                                <Button
+                                    variant="text"
+                                    title="Оставить отзыв"
+                                    size="s"
+                                    className="product-page__main__reviews__content__add-product"
+                                    onClick={() => {
+                                        if (userStore.value.login) {
+                                            setAddReviewModal(true);
+                                        } else {
+                                            setShowNotAuthAlert(true);
+                                        }
+                                    }}
+                                />
+                            </div>
+                        ) : (
+                            (showComments
+                                ? comments
+                                : comments.slice(0, 3)
+                            ).map((comment: any, index: number) => (
+                                <div
+                                    key={comment.id ?? index}
+                                    className="product-page__main__reviews__content__comment"
+                                >
+                                    <div className="product-page__main__reviews__content__comment__info">
+                                        <span className="product-page__main__reviews__content__comment__info__avatar">
+                                            <img
+                                                className="product-page__main__reviews__content__comment__info__avatar__img"
+                                                src={
+                                                    comment.imageURL ??
+                                                    ProfileIcon
+                                                }
+                                            />
+                                        </span>
+                                        <span className="product-page__main__reviews__content__comment__info__author">
+                                            {comment.name}
+                                        </span>
+                                        <span className="product-page__main__reviews__content__comment__info__review">
+                                            <span className="product-page__main__reviews__content__comment__info__review__rating">
+                                                {Array(5)
+                                                    .fill(0)
+                                                    .map((_, I) => (
+                                                        <img
+                                                            key={I}
+                                                            className="product-page__main__reviews__content__comment__info__review__rating__star"
+                                                            src={
+                                                                comment.rating >
+                                                                I
+                                                                    ? StarFilledIcon
+                                                                    : StarIcon
+                                                            }
+                                                        />
+                                                    ))}
+                                            </span>
+                                            <span className="product-page__main__reviews__content__comment__info__review__value">
+                                                {comment.rating}
+                                            </span>
+                                        </span>
+                                    </div>
+                                    <div className="product-page__main__reviews__content__comment__description">
+                                        {comment.comment}
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                    {showComments ? (
+                        <InfinityList
+                            onShow={() => fetchReviews(productId as string)}
+                        />
+                    ) : (
+                        comments.length > 3 && (
+                            <Button
+                                variant="text"
+                                title="Показать все комментарии"
+                                className="product-page__main__reviews__content__more"
+                                onClick={() => setShowComments(true)}
+                            />
+                        )
+                    )}
+                </div>
+                {recommendations.length > 0 && (
+                    <h2>Возможно, Вам понравится</h2>
+                )}
+                <div className="product-page__main__recommendations">
+                    {recommendations.map((item: any) => (
+                        <ProductCard
+                            key={item.id}
+                            id={`${item.id}`}
+                            inCart={item.isInCart}
+                            price={item.price}
+                            discountPrice={item.discountPrice}
+                            title={`${item.name}`}
+                            rating={item.rating}
+                            reviewsCount={item.reviewsCount}
+                            mainImageAlt={`Изображение товара ${item.name}`}
+                            mainImageSrc={item.image}
+                            onError={(err) => {
+                                if (err === AJAXErrors.Unauthorized) {
+                                    setShowNotAuthAlertCart(true);
+                                }
+                            }}
+                        />
+                    ))}
+                </div>
+            </main>
+            <Footer />
+        </div>
+    );
 }
 
 export default ProductPage;
