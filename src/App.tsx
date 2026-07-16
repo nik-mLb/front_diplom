@@ -19,6 +19,7 @@ import SellerFormPage from "./pages/SellerFormPage/SellerFormPage";
 import SellerPage from "./pages/SellerPage/SellerPage";
 import AdminPage from "./pages/AdminPage/AdminPage";
 import WarehousePage from "./pages/WarehousePage/WarehousePage";
+import StatisticsPage from "./pages/StatisticsPage/StatisticsPage";
 
 // Маршруты добавляются по мере переноса страниц с Tarakan на React
 // (см. src/index.ts в истории git для полного списка).
@@ -59,6 +60,7 @@ function App() {
                         <Route path="/seller" element={<SellerPage />} />
                         <Route path="/admin/:tab" element={<AdminPage />} />
                         <Route path="/warehouse" element={<WarehousePage />} />
+                        <Route path="/stats" element={<StatisticsPage />} />
                         <Route
                             path="*"
                             element={<div>Bazaar — идёт миграция на React</div>}
