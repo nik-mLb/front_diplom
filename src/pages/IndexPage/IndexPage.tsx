@@ -1,4 +1,5 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "../../components/Header/Header";
 import Footer from "../../components/Footer/Footer";
 import ProductCard from "../../components/ProductCard/ProductCard";
@@ -10,129 +11,123 @@ import { AJAXErrors } from "../../api/errors";
 import Alert from "../../components/Alert/Alert";
 import InfinityList from "../../components/InfinityList/InfinityList";
 import AdBanner from "../../components/AdBanner/AdBanner";
-import { AD_LINK } from "../../settings";
 
-class IndexPage extends Tarakan.Component {
-    state = {
-        products: [{ end: true }],
-        fetching: false,
-        basket: null,
-        showNotAuthAlert: false,
-        offset: 0,
-    };
+function applyAd(newProducts: any[]) {
+    return newProducts;
+}
 
-    applyAd(newProducts: any[]) {
-        return newProducts;
-    }
+function IndexPage() {
+    const navigate = useNavigate();
+    const [products, setProducts] = useState<any[]>([{ end: true }]);
+    const [showNotAuthAlert, setShowNotAuthAlert] = useState(false);
 
-    async fetchProducts() {
-        if (this.state.fetching) return;
-        this.state.fetching = true;
+    const fetchingRef = useRef(false);
+    const basketRef = useRef<Set<string> | null>(null);
+    const offsetRef = useRef(0);
+    const productsRef = useRef(products);
+    productsRef.current = products;
 
-        const productsResponse = await getProducts(this.state.offset);
+    async function fetchProducts() {
+        if (fetchingRef.current) return;
+        fetchingRef.current = true;
 
-        let basket = this.state.basket;
+        const productsResponse = await getProducts(offsetRef.current);
+
+        let basket = basketRef.current;
 
         if (basket === null) {
             const basketResponse = await getBasket();
             if (basketResponse.code === AJAXErrors.NoError) {
                 basket = new Set();
-                basketResponse.data.products.map((item) => {
-                    basket.add(item.productId);
+                basketResponse.data!.products.map((item) => {
+                    basket!.add(item.productId);
                 });
             }
         }
 
         if (productsResponse.code === AJAXErrors.NoError) {
-            const products = productsResponse.products;
-            this.setState({
-                basket: basket || new Set(),
-                products: [
-                    ...this.state.products.slice(
-                        0,
-                        this.state.products.length - 1,
-                    ),
-                    ...this.applyAd(
-                        products.map((item) => ({
-                            id: item.id,
-                            name: item.name,
-                            image: item.image,
-                            price: item.price,
-                            discountPrice: item.discountPrice,
-                            reviewsCount: item.reviewsCount,
-                            rating: item.rating,
-                            isInCart: basket ? basket.has(item.id) : false,
-                        })),
-                    ),
-                    { end: true },
-                ],
-                offset: this.state.offset + products.length,
-                fetching: false,
-            });
+            const newProducts = productsResponse.products ?? [];
+            basketRef.current = basket || new Set();
+            const current = productsRef.current;
+            const nextProducts = [
+                ...current.slice(0, current.length - 1),
+                ...applyAd(
+                    newProducts.map((item) => ({
+                        id: item.id,
+                        name: item.name,
+                        image: item.image,
+                        price: item.price,
+                        discountPrice: item.discountPrice,
+                        reviewsCount: item.reviewsCount,
+                        rating: item.rating,
+                        isInCart: basket ? basket.has(item.id) : false,
+                    })),
+                ),
+                { end: true },
+            ];
+            productsRef.current = nextProducts;
+            setProducts(nextProducts);
+            offsetRef.current += newProducts.length;
+            fetchingRef.current = false;
         } else {
-            this.state.fetching = false;
+            fetchingRef.current = false;
         }
     }
 
-    init() {
-        this.fetchProducts();
-    }
+    useEffect(() => {
+        fetchProducts();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    render(props, router) {
-        return (
-            <div className={`container`}>
-                <Header />
-                <main
-                    className={`index-page index-page_flex index-page_flex_column`}
-                >
-                    {this.state.showNotAuthAlert && (
-                        <Alert
-                            title="Необходимо войти"
-                            content="Для добавления товаров в корзину, надо сначала войти в профиль"
-                            successButtonTitle="Войти"
-                            onSuccess={() => router.navigateTo("/signin")}
-                            onClose={() =>
-                                this.setState({ showNotAuthAlert: false })
-                            }
-                        />
+    return (
+        <div className="container">
+            <Header />
+            <main className="index-page index-page_flex index-page_flex_column">
+                {showNotAuthAlert && (
+                    <Alert
+                        title="Необходимо войти"
+                        content="Для добавления товаров в корзину, надо сначала войти в профиль"
+                        successButtonTitle="Войти"
+                        onSuccess={() => navigate("/signin")}
+                        onClose={() => setShowNotAuthAlert(false)}
+                    />
+                )}
+                <h1 className="index-page__main-h1">Хиты продаж</h1>
+                <div className="index-page__cards-container">
+                    {products.map((item: any, index: number) =>
+                        !item.ad && !item.end ? (
+                            <ProductCard
+                                key={item.id}
+                                id={`${item.id}`}
+                                inCart={item.isInCart}
+                                price={item.price}
+                                discountPrice={item.discountPrice}
+                                title={`${item.name}`}
+                                rating={item.rating}
+                                reviewsCount={item.reviewsCount}
+                                mainImageAlt={`Изображение товара ${item.name}`}
+                                mainImageSrc={item.image}
+                                onError={(err) => {
+                                    if (err === AJAXErrors.Unauthorized) {
+                                        setShowNotAuthAlert(true);
+                                    }
+                                }}
+                            />
+                        ) : item.ad ? (
+                            <AdBanner key={index} url={item.url} />
+                        ) : (
+                            <InfinityList
+                                key="infinity"
+                                onShow={() => fetchProducts()}
+                            />
+                        ),
                     )}
-                    <h1 className={`index-page__main-h1`}>Хиты продаж</h1>
-                    <div className={`index-page__cards-container`}>
-                        {this.state.products.map((item: any) =>
-                            !item.ad && !item.end ? (
-                                <ProductCard
-                                    id={`${item.id}`}
-                                    inCart={item.isInCart}
-                                    price={`${item.price}`}
-                                    discountPrice={item.discountPrice}
-                                    title={`${item.name}`}
-                                    rating={`${item.rating}`}
-                                    reviewsCount={`${item.reviewsCount}`}
-                                    mainImageAlt={`Изображение товара ${item.name}`}
-                                    mainImageSrc={item.image}
-                                    onError={(err) => {
-                                        if (err === AJAXErrors.Unauthorized) {
-                                            this.setState({
-                                                showNotAuthAlert: true,
-                                            });
-                                        }
-                                    }}
-                                />
-                            ) : item.ad ? (
-                                <AdBanner url={item.url} />
-                            ) : (
-                                <InfinityList
-                                    onShow={() => this.fetchProducts()}
-                                />
-                            ),
-                        )}
-                    </div>
-                </main>
+                </div>
+            </main>
 
-                <Footer />
-            </div>
-        );
-    }
+            <Footer />
+        </div>
+    );
 }
 
 export default IndexPage;
