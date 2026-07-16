@@ -1,34 +1,38 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useRef } from "react";
 import "./styles.scss";
 
-class SVGImage extends Tarakan.Component {
-    state = {
-        container: null,
-    };
+interface SVGImageProps {
+    src: string;
+    className?: string;
+}
 
-    async renderFinished(container) {
-        const res = await fetch(this.props.src);
-        const element = document.createElement("div");
-        element.innerHTML = await res.text();
-        const newContainer: any = element.firstChild;
-        newContainer.classList.add(...this.props.className.trim().split(" "));
-        container.replaceWith(newContainer);
-        this.setDOM(newContainer);
-        this.setState({ container: newContainer }, false);
-    }
+function SVGImage({ src, className }: SVGImageProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
 
-    async update() {
-        const res = await fetch(this.props.src);
-        const newContainer = (this.state.container.outerHTML =
-            await res.text());
-        // newContainer.className = this.props.className;
-        this.setDOM(newContainer);
-        this.state.container.className = `${this.state.container.className} ${this.props.className}`;
-    }
+    useEffect(() => {
+        let cancelled = false;
 
-    render() {
-        return <div />;
-    }
+        (async () => {
+            const res = await fetch(src);
+            const text = await res.text();
+            if (cancelled || !containerRef.current) return;
+
+            containerRef.current.innerHTML = text;
+            const svgElement = containerRef.current
+                .firstElementChild as HTMLElement | null;
+            if (svgElement && className) {
+                svgElement.classList.add(
+                    ...className.trim().split(" ").filter(Boolean),
+                );
+            }
+        })();
+
+        return () => {
+            cancelled = true;
+        };
+    }, [src, className]);
+
+    return <div ref={containerRef} />;
 }
 
 export default SVGImage;

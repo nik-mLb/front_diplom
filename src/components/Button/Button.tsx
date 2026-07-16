@@ -1,4 +1,4 @@
-import Tarakan from "bazaar-tarakan";
+import { cloneElement, isValidElement, type MouseEvent } from "react";
 import "./styles.scss";
 
 export const ICON_POSITION = {
@@ -21,56 +21,66 @@ export const BUTTON_SIZE = {
     L: "l",
 };
 
-class Button extends Tarakan.Component {
-    render(props: any) {
-        const size = props.size ?? BUTTON_SIZE.L;
-        const variant = props.variant ?? BUTTON_VARIANT.PRIMARY;
-        const iconPosition = props.iconPosition ?? ICON_POSITION.LEFT;
-        const otherClasses = props.className ?? "";
+interface ButtonProps {
+    size?: string;
+    variant?: string;
+    iconPosition?: string;
+    className?: string;
+    disabled?: boolean;
+    icon?: any;
+    iconSrc?: string;
+    iconAlt?: string;
+    badgeTitle?: string | number;
+    title?: string;
+    onClick?: (event: MouseEvent<HTMLButtonElement>) => void;
+    onMouseOver?: (event: MouseEvent<HTMLButtonElement>) => void;
+    onMouseLeave?: (event: MouseEvent<HTMLButtonElement>) => void;
+}
 
-        return (
-            <button
-                type="button"
-                disabled={this.props.disabled}
-                className={`button button_${size}_size button_${variant} button_${iconPosition} ${otherClasses}`.trim()}
-                onClick={(event: any) =>
-                    props.onClick ? props.onClick(event) : {}
-                }
-                onMouseOver={(event: any) =>
-                    props.onMouseOver ? props.onMouseOver(event) : {}
-                }
-                onMouseLeave={(event: any) =>
-                    props.onMouseLeave ? props.onMouseLeave(event) : {}
-                }
-            >
-                {props.icon
-                    ? {
-                          ...props.icon,
-                          props: {
-                              ...props.icon.props,
-                              className:
-                                  props.icon.props.className ??
-                                  "" + ` ${`icon icon_${size}_size`}`.trim(),
-                          },
-                      }
-                    : props.iconSrc && (
-                          <div style="position: relative; display: flex">
-                              <img
-                                  alt={`${props.iconAlt}`}
-                                  src={`${props.iconSrc}`}
-                                  className={`icon icon_${size}_size`}
-                              />
-                              {props.badgeTitle && (
-                                  <span className="badge">
-                                      {props.badgeTitle}
-                                  </span>
-                              )}
-                          </div>
-                      )}
-                {props.title && <span>{props.title}</span>}
-            </button>
-        );
-    }
+function Button(props: ButtonProps) {
+    const size = props.size ?? BUTTON_SIZE.L;
+    const variant = props.variant ?? BUTTON_VARIANT.PRIMARY;
+    const iconPosition = props.iconPosition ?? ICON_POSITION.LEFT;
+    const otherClasses = props.className ?? "";
+
+    return (
+        <button
+            type="button"
+            disabled={props.disabled}
+            className={`button button_${size}_size button_${variant} button_${iconPosition} ${otherClasses}`.trim()}
+            onClick={(event) => (props.onClick ? props.onClick(event) : {})}
+            onMouseOver={(event) =>
+                props.onMouseOver ? props.onMouseOver(event) : {}
+            }
+            onMouseLeave={(event) =>
+                props.onMouseLeave ? props.onMouseLeave(event) : {}
+            }
+        >
+            {props.icon
+                ? isValidElement(props.icon)
+                    ? cloneElement(props.icon as any, {
+                          className:
+                              (props.icon as any).props.className ??
+                              "" + ` ${`icon icon_${size}_size`}`.trim(),
+                      })
+                    : props.icon
+                : props.iconSrc && (
+                      <div style={{ position: "relative", display: "flex" }}>
+                          <img
+                              alt={`${props.iconAlt}`}
+                              src={`${props.iconSrc}`}
+                              className={`icon icon_${size}_size`}
+                          />
+                          {props.badgeTitle && (
+                              <span className="badge">
+                                  {props.badgeTitle}
+                              </span>
+                          )}
+                      </div>
+                  )}
+            {props.title && <span>{props.title}</span>}
+        </button>
+    );
 }
 
 export default Button;

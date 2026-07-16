@@ -1,69 +1,78 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useRef, useState } from "react";
 import "./styles.scss";
 
-class AdBanner extends Tarakan.Component {
-    state = {
-        link: null,
-        error: false,
-    };
+interface AdBannerProps {
+    url: string;
+}
 
-    renderFinished(container: HTMLDivElement) {
-        new ResizeObserver(() => {
-            if (this.state.error) return;
-            const iframe: HTMLIFrameElement =
-                container.firstChild as HTMLIFrameElement;
+function AdBanner({ url }: AdBannerProps) {
+    const [error, setError] = useState(false);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const iframeRef = useRef<HTMLIFrameElement>(null);
+    const linkRef = useRef<any>(null);
+    const errorRef = useRef(false);
+
+    useEffect(() => {
+        const container = containerRef.current;
+        const iframe = iframeRef.current;
+        if (!container || !iframe) return;
+
+        const resizeObserver = new ResizeObserver(() => {
+            if (errorRef.current) return;
             iframe.style.scale = `${container.clientWidth / 300}`;
             iframe.style.marginBottom = `${container.clientWidth - 300}px`;
-        }).observe(container);
-
-        const iframe: HTMLIFrameElement =
-            container.firstChild as HTMLIFrameElement;
-        iframe.addEventListener("load", () => {
-            if (this.state.error) return;
-            const link: any = iframe.contentWindow?.document
-                .querySelectorAll("a[href]")
-                .item(0);
-            this.state.link = link;
-            if (link === null) {
-                this.setState({
-                    error: true,
-                });
-            }
         });
+        resizeObserver.observe(container);
 
-        setTimeout(() => {
-            if (!this.state.link) {
-                this.setState({
-                    error: true,
-                });
+        const handleLoad = () => {
+            if (errorRef.current) return;
+            const link =
+                iframe.contentWindow?.document
+                    .querySelectorAll("a[href]")
+                    .item(0) ?? null;
+            linkRef.current = link;
+            if (link === null) {
+                errorRef.current = true;
+                setError(true);
+            }
+        };
+        iframe.addEventListener("load", handleLoad);
+
+        const timeout = setTimeout(() => {
+            if (!linkRef.current) {
+                errorRef.current = true;
+                setError(true);
             }
         }, 5000);
-    }
 
-    render(props) {
-        return (
+        return () => {
+            resizeObserver.disconnect();
+            iframe.removeEventListener("load", handleLoad);
+            clearTimeout(timeout);
+        };
+    }, []);
+
+    return (
+        <div
+            className="ad"
+            style={error ? { cursor: "default" } : undefined}
+            ref={containerRef}
+        >
+            {!error ? (
+                <iframe ref={iframeRef} src={url} width="300px" height="300px" />
+            ) : (
+                <div className="ad__no_ad">
+                    <div>Здесь могла быть ваша реклама</div>
+                    <div>Звоните +7 (999)-999-99-99</div>
+                </div>
+            )}
+            <div className="ad__text">Реклама</div>
             <div
-                className="ad"
-                style={this.state.error ? "cursor: default;" : ""}
-            >
-                {!this.state.error ? (
-                    <iframe src={props.url} width="300px" height="300px" />
-                ) : (
-                    <div className="ad__no_ad">
-                        <div>Здесь могла быть ваша реклама</div>
-                        <div>Звоните +7 (999)-999-99-99</div>
-                    </div>
-                )}
-                <div className="ad__text">Реклама</div>
-                <div
-                    className="ad__click"
-                    onClick={() =>
-                        this.state.link && window.open(this.state.link)
-                    }
-                ></div>
-            </div>
-        );
-    }
+                className="ad__click"
+                onClick={() => linkRef.current && window.open(linkRef.current)}
+            ></div>
+        </div>
+    );
 }
 
 export default AdBanner;

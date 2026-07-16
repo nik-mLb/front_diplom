@@ -1,60 +1,58 @@
-import Tarakan from "bazaar-tarakan";
+import { useState } from "react";
 
 import ArrowDown from "../../shared/images/arrow-down-ico.svg";
 
 import "./styles.scss";
 import Button from "../Button/Button";
 
-class Select extends Tarakan.Component {
-    init(initProps) {
-        this.state = {
-            opened: false,
-            selected: initProps.defaultValue
-                ? initProps.options.filter(
-                      (E) => E.key === initProps.defaultValue,
-                  )[0]
-                : null,
-        };
-    }
+interface SelectOption {
+    key: string;
+    name: string;
+}
 
-    render(props) {
-        return (
-            <div className="select">
-                <div
-                    className="select__value"
-                    onClick={() =>
-                        this.setState({ opened: !this.state.opened })
-                    }
-                >
-                    <div className="select__value__text">
-                        {this.state.selected?.name ?? "Не выбрано"}
-                    </div>
-                    <Button
-                        className="select__value__btn"
-                        iconSrc={ArrowDown}
-                    />
+interface SelectProps {
+    options: SelectOption[];
+    defaultValue?: string;
+    onSelect?: (key: string) => void;
+}
+
+function Select(props: SelectProps) {
+    const [opened, setOpened] = useState(false);
+    const [selected, setSelected] = useState<SelectOption | null>(
+        props.defaultValue
+            ? (props.options.filter((E) => E.key === props.defaultValue)[0] ??
+                  null)
+            : null,
+    );
+
+    return (
+        <div className="select">
+            <div
+                className="select__value"
+                onClick={() => setOpened(!opened)}
+            >
+                <div className="select__value__text">
+                    {selected?.name ?? "Не выбрано"}
                 </div>
-                <div
-                    className={`select__options${this.state.opened ? " opened" : ""}`}
-                >
-                    {props.options.map((option) => (
-                        <div
-                            className="select__options__option"
-                            onClick={() => {
-                                this.setState({
-                                    selected: option,
-                                    opened: false,
-                                });
-                                if (props.onSelect) props.onSelect(option.key);
-                            }}
-                        >
-                            {option.name}
-                        </div>
-                    ))}
-                </div>
+                <Button className="select__value__btn" iconSrc={ArrowDown} />
             </div>
-        );
-    }
+            <div className={`select__options${opened ? " opened" : ""}`}>
+                {props.options.map((option) => (
+                    <div
+                        key={option.key}
+                        className="select__options__option"
+                        onClick={() => {
+                            setSelected(option);
+                            setOpened(false);
+                            if (props.onSelect) props.onSelect(option.key);
+                        }}
+                    >
+                        {option.name}
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 }
 
 export default Select;
