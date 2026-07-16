@@ -9,6 +9,8 @@ import LoginPage from "./pages/LoginPage/LoginPage";
 import RegisterPage from "./pages/RegisterPage/RegisterPage";
 import CategoryPage from "./pages/CategoryPage/CategoryPage";
 import SearchPage from "./pages/SearchPage/SearchPage";
+import CartPage from "./pages/CartPage/CartPage";
+import PlaceOrderPage from "./pages/PlaceOrderPage/PlaceOrderPage";
 
 // Маршруты добавляются по мере переноса страниц с Tarakan на React
 // (см. src/index.ts в истории git для полного списка).
@@ -30,6 +32,11 @@ function App() {
                             element={<CategoryPage />}
                         />
                         <Route path="/search" element={<SearchPage />} />
+                        <Route path="/cart" element={<CartPage />} />
+                        <Route
+                            path="/place-order"
+                            element={<PlaceOrderPage />}
+                        />
                         <Route
                             path="*"
                             element={<div>Bazaar — идёт миграция на React</div>}
