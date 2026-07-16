@@ -267,7 +267,7 @@ function ProductPage() {
                                         }}
                                     />
                                     <Button
-                                        disabled={(product.remainQuantity ?? 0) < 0}
+                                        disabled={product.remainQuantity ?? 0 < 0}
                                         size="m"
                                         title={
                                             product.quantity === 0

@@ -1,5 +1,6 @@
 import { defineConfig, type Plugin } from "vite";
 import react from "@vitejs/plugin-react";
+import { VitePWA } from "vite-plugin-pwa";
 import path from "path";
 import fs from "fs";
 
@@ -22,7 +23,21 @@ function mediaDefaultImagePlugin(): Plugin {
 }
 
 export default defineConfig({
-    plugins: [react(), mediaDefaultImagePlugin()],
+    plugins: [
+        react(),
+        mediaDefaultImagePlugin(),
+        VitePWA({
+            // manifest.webmanifest уже лежит в public/ и подключён в index.html вручную —
+            // не даём плагину генерировать свой (и не переопределяем существующий).
+            manifest: false,
+            registerType: "autoUpdate",
+            workbox: {
+                // precache-манифест собирается автоматически из реального билда
+                // (вместо захардкоженных имён файлов в старом public/sw.ts).
+                globPatterns: ["**/*.{js,css,html,svg,png,jpg,jpeg,woff,woff2,ttf,eot}"],
+            },
+        }),
+    ],
 
     build: {
         outDir: "build",

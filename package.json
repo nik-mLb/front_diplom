@@ -47,6 +47,7 @@
     "sass": "^1.86.0",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.32.1",
-    "vite": "^5.4.8"
+    "vite": "^5.4.8",
+    "vite-plugin-pwa": "^0.20.5"
   }
 }
