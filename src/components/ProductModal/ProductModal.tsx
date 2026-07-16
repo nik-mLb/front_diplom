@@ -1,4 +1,4 @@
-import Tarakan from "bazaar-tarakan";
+import { forwardRef, useImperativeHandle, useState } from "react";
 
 import "./styles.scss";
 
@@ -6,33 +6,33 @@ import crossIcon from "../../shared/images/cross-ico.svg";
 import { Product } from "../../api/product";
 import { convertMoney } from "../../pages/AdminPage/AdminPage";
 
-class ProductModal extends Tarakan.Component {
-    state = {
-        container: null,
-        status: "closed",
-    };
+export interface ProductModalHandle {
+    handleOpen: () => void;
+}
 
-    handleOpen() {
-        this.setState({ status: "opened" });
-    }
+interface ProductModalProps {
+    product: Product | null;
+}
 
-    handleClose() {
-        this.setState({ status: "closed" });
-    }
+const ProductModal = forwardRef<ProductModalHandle, ProductModalProps>(
+    function ProductModal({ product: request }, ref) {
+        const [status, setStatus] = useState("closed");
 
-    renderFinished(container: HTMLElement) {
-        this.setState({ container }, true);
-    }
+        useImperativeHandle(ref, () => ({
+            handleOpen: () => setStatus("opened"),
+        }));
 
-    render(props) {
-        const request: Product = props.product;
+        function handleClose() {
+            setStatus("closed");
+        }
+
         return (
             <div className="product-modal">
                 <div
-                    className={"product-modal__tint " + this.state.status}
-                    onClick={() => this.handleClose()}
+                    className={"product-modal__tint " + status}
+                    onClick={() => handleClose()}
                 />
-                <div className={"product-modal__content " + this.state.status}>
+                <div className={"product-modal__content " + status}>
                     <div className="product-modal__content__title">
                         <div className="product-modal__content__title__h">
                             Информация о товаре
@@ -41,7 +41,7 @@ class ProductModal extends Tarakan.Component {
                             <img
                                 className="alert__title__close__img"
                                 src={crossIcon}
-                                onClick={() => this.handleClose()}
+                                onClick={() => handleClose()}
                             />
                         </div>
                     </div>
@@ -101,7 +101,7 @@ class ProductModal extends Tarakan.Component {
                                             empty: "Товар закончился",
                                             approved: "В продаже",
                                             rejected: "Отказано",
-                                        }[request?.status]
+                                        }[request?.status as string]
                                     }
                                 </span>
                             </div>
@@ -110,7 +110,7 @@ class ProductModal extends Tarakan.Component {
                 </div>
             </div>
         );
-    }
-}
+    },
+);
 
 export default ProductModal;

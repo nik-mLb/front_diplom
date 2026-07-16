@@ -15,6 +15,8 @@ import OrdersPage from "./pages/OrdersPage/OrdersPage";
 import ProfilePage from "./pages/ProfilePage/ProfilePage";
 import NotificationsPage from "./pages/NotificationsPage/NotificationsPage";
 import SurveyPage from "./pages/SurveyPage/SurveyPage";
+import SellerFormPage from "./pages/SellerFormPage/SellerFormPage";
+import SellerPage from "./pages/SellerPage/SellerPage";
 
 // Маршруты добавляются по мере переноса страниц с Tarakan на React
 // (см. src/index.ts в истории git для полного списка).
@@ -48,6 +50,11 @@ function App() {
                             element={<NotificationsPage />}
                         />
                         <Route path="/csat/:id" element={<SurveyPage />} />
+                        <Route
+                            path="/seller-form"
+                            element={<SellerFormPage />}
+                        />
+                        <Route path="/seller" element={<SellerPage />} />
                         <Route
                             path="*"
                             element={<div>Bazaar — идёт миграция на React</div>}

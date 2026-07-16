@@ -1,82 +1,83 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useState } from "react";
 import "./styles.scss";
 import { getAllCategories } from "../../api/categories";
 import { AJAXErrors } from "../../api/errors";
+import { useProductsStore } from "../../stores/ProductsStore";
 
-class CategorySelect extends Tarakan.Component {
-    state = {
-        content: "Категория товара не выбрана",
-        categories: [],
-        selectCategory: null,
-        subcategories: [],
-        opened: false,
-    };
+interface CategorySelectProps {
+    className?: string;
+    onSelect: (id: string) => void;
+}
 
-    async fetchCategories() {
+function CategorySelect({ className, onSelect }: CategorySelectProps) {
+    const productsStore = useProductsStore();
+
+    const [content, setContent] = useState("Категория товара не выбрана");
+    const [categories, setCategories] = useState<any[]>([]);
+    const [selectCategory, setSelectCategory] = useState<any>(null);
+    const [subcategories, setSubcategories] = useState<any[]>([]);
+    const [opened, setOpened] = useState(false);
+
+    async function fetchCategories() {
         const { code, data } = await getAllCategories();
         if (code === AJAXErrors.NoError) {
-            this.setState({ categories: data.categories });
+            setCategories(data!.categories);
         }
     }
 
-    async fetchSubCategories(category: any) {
-        const data = await this.app.store.products.sendAction(
-            "getSubCategories",
-            category.id,
-        );
-        this.setState({ subcategories: data, selectCategory: category });
+    async function fetchSubCategories(category: any) {
+        const data = await productsStore.getSubCategories(category.id);
+        setSubcategories(data);
+        setSelectCategory(category);
     }
 
-    init() {
-        this.fetchCategories();
-    }
+    useEffect(() => {
+        fetchCategories();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    render(props) {
-        return (
-            <div className={`category-select ${props.className ?? ""}`.trim()}>
-                <div
-                    className="category-select__text"
-                    onClick={() =>
-                        this.setState({ opened: !this.state.opened })
-                    }
-                >
-                    {this.state.content}
-                </div>
-                {this.state.opened && (
-                    <div className="category-select__popup">
-                        <div className="category-select__popup__categories">
-                            {this.state.categories.map((category) => (
-                                <div
-                                    className="category-select__popup__categories__item"
-                                    onMouseOver={() =>
-                                        this.fetchSubCategories(category)
-                                    }
-                                >
-                                    {category.name}
-                                </div>
-                            ))}
-                        </div>
-                        <div className="category-select__popup__subcategories">
-                            {this.state.subcategories.map((subcategory) => (
-                                <div
-                                    className="category-select__popup__subcategories__item"
-                                    onClick={() => {
-                                        this.setState({
-                                            content: `${this.state.selectCategory.name} - ${subcategory.name}`,
-                                            opened: false,
-                                        });
-                                        props.onSelect(subcategory.id);
-                                    }}
-                                >
-                                    {subcategory.name}
-                                </div>
-                            ))}
-                        </div>
-                    </div>
-                )}
+    return (
+        <div className={`category-select ${className ?? ""}`.trim()}>
+            <div
+                className="category-select__text"
+                onClick={() => setOpened(!opened)}
+            >
+                {content}
             </div>
-        );
-    }
+            {opened && (
+                <div className="category-select__popup">
+                    <div className="category-select__popup__categories">
+                        {categories.map((category) => (
+                            <div
+                                key={category.id}
+                                className="category-select__popup__categories__item"
+                                onMouseOver={() => fetchSubCategories(category)}
+                            >
+                                {category.name}
+                            </div>
+                        ))}
+                    </div>
+                    <div className="category-select__popup__subcategories">
+                        {subcategories.map((subcategory) => (
+                            <div
+                                key={subcategory.id}
+                                className="category-select__popup__subcategories__item"
+                                onClick={() => {
+                                    setContent(
+                                        `${selectCategory.name} - ${subcategory.name}`,
+                                    );
+                                    setOpened(false);
+                                    onSelect(subcategory.id);
+                                }}
+                            >
+                                {subcategory.name}
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
 }
 
 export default CategorySelect;
