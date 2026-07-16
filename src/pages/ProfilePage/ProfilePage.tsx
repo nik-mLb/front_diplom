@@ -1,4 +1,5 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Header from "../../components/Header/Header";
 import Footer from "../../components/Footer/Footer";
 
@@ -11,378 +12,329 @@ import { getMe, updateMe, updatePassword, uploadAvatar } from "../../api/user";
 import { AJAXErrors } from "../../api/errors";
 import { ValidTypes } from "bazaar-validation";
 import { logout } from "../../api/auth";
-import CSAT from "../CSAT/CSAT";
+import { useUserStore } from "../../stores/UserStore";
 
-export default class ProfilePage extends Tarakan.Component {
-    state: any = {
-        errors: {},
+interface ProfileForm {
+    name: string;
+    surname: string;
+    phoneNumber: string;
+    avatarURL: string;
+    email: string;
+    oldPassword: string;
+    password: string;
+    repeatPassword: string;
+}
+
+function ProfilePage() {
+    const navigate = useNavigate();
+    const userStore = useUserStore();
+
+    const [form, setForm] = useState<ProfileForm>({
+        name: "",
+        surname: "",
+        phoneNumber: "",
+        avatarURL: "",
+        email: "",
         oldPassword: "",
         password: "",
         repeatPassword: "",
-        successData: false,
-        successPassword: false,
-        csat: false,
-    };
+    });
+    const [errors, setErrors] = useState<Record<string, boolean>>({});
+    const [successData, setSuccessData] = useState(false);
+    const [successPassword, setSuccessPassword] = useState(false);
 
-    init() {
-        this.fetchProfileInfo();
-        // setTimeout => this.setState({ csat: true }), 10000);
+    async function fetchProfileInfo() {
+        const response = await getMe();
+
+        if (response.code === AJAXErrors.NoError) {
+            setForm((prev) => ({
+                ...prev,
+                name: response.data!.name,
+                surname: response.data!.surname ?? "",
+                avatarURL: response.data!.imageURL ?? "",
+                email: response.data!.email,
+                phoneNumber: response.data!.phoneNumber ?? "",
+            }));
+        } else {
+            navigate("/signin");
+        }
     }
 
-    getFullName() {
-        if (this.state.name) {
-            if (this.state.surname) {
-                return `${this.state.name} ${this.state.surname}`;
+    useEffect(() => {
+        fetchProfileInfo();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    function getFullName() {
+        if (form.name) {
+            if (form.surname) {
+                return `${form.name} ${form.surname}`;
             }
-            return `${this.state.name}`;
+            return `${form.name}`;
         }
         return `Анонимный пользователь`;
     }
 
-    showTab(e, tabID) {
-        const elements = document.querySelectorAll(".tab");
-        elements.forEach((item) => {
-            item.classList.remove("active");
-            if (item.id === tabID) {
-                item.classList.add("active");
-            }
-        });
-
-        const menuItems = document.querySelectorAll(".menu-item");
-        menuItems.forEach((item) => {
-            item.classList.remove("active");
-        });
-        e.target.classList.add("active");
-    }
-
-    async fetchProfileInfo() {
-        const response = await getMe();
-
-        if (response.code === AJAXErrors.NoError) {
-            this.setState({
-                name: response.data.name,
-                surname: response.data.surname ?? "",
-                avatarURL: response.data.imageURL ?? "",
-                email: response.data.email,
-                phoneNumber: response.data.phoneNumber ?? "",
-            });
-        } else {
-            this.app.navigateTo("/signin");
-        }
-    }
-
-    handleChange(key: any, ok: any, v: any) {
+    function handleChange(key: keyof ProfileForm, ok: boolean, v: string) {
         if (key === "phoneNumber" && !v) {
             return;
         }
 
         if (ok) {
-            if (this.state.errors[key]) {
-                delete this.state.errors[key];
+            if (errors[key]) {
+                setErrors((prev) => {
+                    const next = { ...prev };
+                    delete next[key];
+                    return next;
+                });
             }
         } else {
-            this.setState({ errors: { ...this.state.errors, [key]: true } });
+            setErrors((prev) => ({ ...prev, [key]: true }));
         }
-        this.setState({
-            [key]: v,
-            successData: false,
-            successPassword: false,
-        });
+        setForm((prev) => ({ ...prev, [key]: v }));
+        setSuccessData(false);
+        setSuccessPassword(false);
     }
 
-    async handleSaveData() {
-        const code = await updateMe(
-            this.state.name,
-            this.state.surname,
-            this.state.phoneNumber,
-        );
+    async function handleSaveData() {
+        const code = await updateMe(form.name, form.surname, form.phoneNumber);
         if (code === AJAXErrors.NoError) {
-            this.setState({ successData: true });
+            setSuccessData(true);
         }
     }
 
-    async handleSavePassword() {
-        if (this.state.errors.notRepeatPassword)
-            delete this.state.errors.notRepeatPassword;
-        if (this.state.errors.wrongPassword)
-            delete this.state.errors.wrongPassword;
+    async function handleSavePassword() {
+        setErrors((prev) => {
+            const next = { ...prev };
+            delete next.notRepeatPassword;
+            delete next.wrongPassword;
+            return next;
+        });
 
-        if (this.state.password != this.state.repeatPassword) {
-            this.setState({
-                errors: { ...this.state.errors, notRepeatPassword: true },
-            });
+        if (form.password != form.repeatPassword) {
+            setErrors((prev) => ({ ...prev, notRepeatPassword: true }));
             return;
         }
 
-        const code = await updatePassword(
-            this.state.oldPassword,
-            this.state.password,
-        );
+        const code = await updatePassword(form.oldPassword, form.password);
         if (code === AJAXErrors.WrongPassword) {
-            this.setState({
-                errors: { ...this.state.errors, wrongPassword: true },
-            });
+            setErrors((prev) => ({ ...prev, wrongPassword: true }));
         }
 
         if (code === AJAXErrors.NoError) {
-            this.setState({ successPassword: true, wrongPassword: true });
+            setSuccessPassword(true);
         }
     }
 
-    async handleLogout() {
+    async function handleLogout() {
         const code = await logout();
         if (code === AJAXErrors.NoError) {
-            this.app.store.user.sendAction("logout");
-            this.app.navigateTo("/");
+            userStore.logout();
+            navigate("/");
         }
     }
 
-    async handleUploadAvatar(event: any) {
+    async function handleUploadAvatar(event: any) {
         const file = event.target.files[0];
         const response = await uploadAvatar(file);
         if (response.code === AJAXErrors.NoError) {
-            this.setState({ avatarURL: response.url });
+            setForm((prev) => ({ ...prev, avatarURL: response.url! }));
         }
     }
 
-    render() {
-        return (
-            <div className={`container`}>
-                <Header />
+    return (
+        <div className="container">
+            <Header />
 
-                <main className={`profile-page flex`}>
-                    {this.state.csat && <CSAT id="Profile" />}
-                    <div className={`nav-column flex column`}>
-                        <img
-                            className={`avatar`}
-                            src={
-                                this.state.avatarURL
-                                    ? this.state.avatarURL
-                                    : `${ProfilePicture}`
-                            }
-                            alt={`Аватар пользователя`}
-                        />
+            <main className="profile-page flex">
+                <div className="nav-column flex column">
+                    <img
+                        className="avatar"
+                        src={form.avatarURL ? form.avatarURL : `${ProfilePicture}`}
+                        alt="Аватар пользователя"
+                    />
 
-                        {/*<button type="button" className="avatar">
-                        <label for="file">
-                            <img
-                                className={`avatar__img`}
-                                src={this.state.avatarURL ? this.state.avatarURL : `${ProfilePicture}`}
-                                alt={`Аватар пользователя`}
-                            />
-                        </label>
-                    </button>
-                    <input type="file" id="file" style="display:none;" />*/}
+                    <h2 className="h-reset name">{getFullName()}</h2>
 
-                        <h2 className={`h-reset name`}>{this.getFullName()}</h2>
+                    <ol className="list-reset menu flex column">
+                        <li className="menu-item active">Мои данные</li>
+                        <li className="menu-item active">
+                            <label style={{ cursor: "pointer" }}>
+                                <input
+                                    type="file"
+                                    accept=".jpg,.png"
+                                    style={{ display: "none" }}
+                                    onChange={(ev) => handleUploadAvatar(ev)}
+                                />
+                                Сменить аватарку
+                            </label>
+                        </li>
 
-                        <ol className={`list-reset menu flex column`}>
-                            <li
-                                className={`menu-item active`}
-                                onClick={(e: any) =>
-                                    this.showTab(e, "personal-data")
-                                }
-                            >
-                                Мои данные
-                            </li>
-                            <li className={`menu-item active`}>
-                                <label style="cursor:pointer">
-                                    <input
-                                        type="file"
-                                        accept=".jpg,.png"
-                                        style="display:none"
-                                        onChange={(ev) =>
-                                            this.handleUploadAvatar(ev)
-                                        }
-                                    />
-                                    Сменить аватарку
-                                </label>
-                            </li>
+                        <li
+                            className="menu-item error active"
+                            onClick={() => handleLogout()}
+                        >
+                            Выйти из профиля
+                        </li>
+                    </ol>
+                </div>
 
-                            <li
-                                className={`menu-item error active`}
-                                onClick={() => this.handleLogout()}
-                            >
-                                Выйти из профиля
-                            </li>
-                        </ol>
+                <div id="personal-data" className="tab active">
+                    <div>
+                        <h2 className="h-reset" style={{ marginBottom: "8px" }}>
+                            Мои данные
+                        </h2>
+                        <p className="help">
+                            Здесь Вы можете изменить свои персональные данные.
+                            Они будут использоваться при создании заказа.
+                        </p>
                     </div>
 
-                    <div id="personal-data" className={`tab active`}>
-                        <div>
-                            <h2
-                                className={`h-reset`}
-                                style="margin-bottom: 8px"
-                            >
-                                Мои данные
-                            </h2>
-                            <p className={`help`}>
-                                Здесь Вы можете изменить свои персональные
-                                данные. Они будут использоваться при создании
-                                заказа.
-                            </p>
-                        </div>
+                    <div className="main-content flex column">
+                        <div className="fields-wrapper">
+                            <div className="fields-column">
+                                <TextField
+                                    fieldName="Имя"
+                                    value={form.name}
+                                    onEnd={(ok, v) => {
+                                        if (v) {
+                                            handleChange("name", ok, v);
+                                        }
+                                    }}
+                                    validType={ValidTypes.NameValid}
+                                    maxLength={"20"}
+                                />
 
-                        <div className={`main-content flex column`}>
-                            <div className={`fields-wrapper`}>
-                                <div className={`fields-column`}>
-                                    <TextField
-                                        fieldName="Имя"
-                                        value={this.state.name}
-                                        onEnd={(ok, v) => {
-                                            if (v) {
-                                                this.handleChange(
-                                                    "name",
-                                                    ok,
-                                                    v,
-                                                );
-                                            }
-                                        }}
-                                        validType={ValidTypes.NameValid}
-                                        maxLength={"20"}
-                                    />
+                                <TextField
+                                    fieldName="Фамилия"
+                                    value={form.surname}
+                                    onEnd={(ok, v) => {
+                                        if (v !== undefined && v !== null) {
+                                            handleChange("surname", ok, v);
+                                        }
+                                    }}
+                                    validType={ValidTypes.SurnameValid}
+                                    maxLength={20}
+                                />
 
-                                    <TextField
-                                        fieldName="Фамилия"
-                                        value={this.state.surname}
-                                        onEnd={(ok: any, v: any) => {
-                                            if (v !== undefined && v !== null) {
-                                                this.handleChange(
-                                                    "surname",
-                                                    ok,
-                                                    v,
-                                                );
-                                            }
-                                        }}
-                                        validType={ValidTypes.SurnameValid}
-                                        maxLength={20}
-                                    />
-
-                                    <TextField
-                                        type="tel"
-                                        fieldName="Телефон"
-                                        value={this.state.phoneNumber}
-                                        disabled={"disabled"}
-                                        onEnd={(ok: any, v: any) => {
-                                            if (v) {
-                                                this.handleChange(
-                                                    "phoneNumber",
-                                                    ok,
-                                                    v,
-                                                );
-                                            }
-                                        }}
-                                        validType={ValidTypes.TelephoneValid}
-                                        title="Введите номер телефона"
-                                        maxLength={20}
-                                        min={10000000000}
-                                        max={99999999999}
-                                        canEmpty={true}
-                                    />
-                                    <div style="display: flex; justify-content: space-between; align-items: center">
-                                        <div>
-                                            {this.state.successData && (
-                                                <span style="color: green">
-                                                    Данные обновлены
-                                                </span>
-                                            )}
-                                        </div>
-                                        <Button
-                                            className={`save button-wrapper`}
-                                            disabled={
-                                                this.state.errors.name ||
-                                                this.state.errors.surname ||
-                                                this.state.errors.phoneNumber
-                                            }
-                                            title={"Сохранить данные"}
-                                            onClick={() =>
-                                                this.handleSaveData()
-                                            }
-                                        />
+                                <TextField
+                                    type="tel"
+                                    fieldName="Телефон"
+                                    value={form.phoneNumber}
+                                    onEnd={(ok, v) => {
+                                        if (v) {
+                                            handleChange("phoneNumber", ok, v);
+                                        }
+                                    }}
+                                    validType={ValidTypes.TelephoneValid}
+                                    title="Введите номер телефона"
+                                    maxLength={20}
+                                    min={10000000000}
+                                    max={99999999999}
+                                    canEmpty={true}
+                                />
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                    }}
+                                >
+                                    <div>
+                                        {successData && (
+                                            <span style={{ color: "green" }}>
+                                                Данные обновлены
+                                            </span>
+                                        )}
                                     </div>
+                                    <Button
+                                        className="save button-wrapper"
+                                        disabled={
+                                            errors.name ||
+                                            errors.surname ||
+                                            errors.phoneNumber
+                                        }
+                                        title="Сохранить данные"
+                                        onClick={() => handleSaveData()}
+                                    />
                                 </div>
+                            </div>
 
-                                <div className={`fields-column`}>
-                                    <TextField
-                                        fieldName="Старый пароль"
-                                        title={""}
-                                        type="password"
-                                        validType={ValidTypes.NotNullValid}
-                                        value={this.state.oldPassword}
-                                        onEnd={(ok: any, v: any) =>
-                                            this.handleChange(
-                                                "oldPassword",
-                                                ok,
-                                                v,
-                                            )
-                                        }
-                                    />
+                            <div className="fields-column">
+                                <TextField
+                                    fieldName="Старый пароль"
+                                    title=""
+                                    type="password"
+                                    validType={ValidTypes.NotNullValid}
+                                    value={form.oldPassword}
+                                    onEnd={(ok, v) =>
+                                        handleChange("oldPassword", ok, v)
+                                    }
+                                />
 
-                                    <TextField
-                                        fieldName="Новый пароль"
-                                        title={""}
-                                        validType={ValidTypes.PasswordValid}
-                                        type="password"
-                                        value={this.state.password}
-                                        onEnd={(ok: any, v: any) =>
-                                            this.handleChange("password", ok, v)
-                                        }
-                                    />
-                                    <TextField
-                                        fieldName="Новый пароль ещё раз"
-                                        title={""}
-                                        validType={ValidTypes.PasswordValid}
-                                        type="password"
-                                        value={this.state.repeatPassword}
-                                        onEnd={(ok: any, v: any) =>
-                                            this.handleChange(
-                                                "repeatPassword",
-                                                ok,
-                                                v,
-                                            )
-                                        }
-                                    />
-                                    <div style="display: flex; justify-content: space-between; align-items: center">
-                                        <div>
-                                            {this.state.errors
-                                                .notRepeatPassword && (
-                                                <span style="color: red">
-                                                    Пароли не совпадают!
-                                                </span>
-                                            )}
-                                            {this.state.errors
-                                                .wrongPassword && (
-                                                <span style="color: red">
-                                                    Неверный старый пароль!
-                                                </span>
-                                            )}
-                                            {this.state.successPassword && (
-                                                <span style="color: green">
-                                                    Пароль обновлен
-                                                </span>
-                                            )}
-                                        </div>
-                                        <Button
-                                            className={`save`}
-                                            title={"Изменить пароль"}
-                                            disabled={
-                                                this.state.errors.password ||
-                                                this.state.errors
-                                                    .repeatPassword ||
-                                                this.state.errors.oldPassword
-                                            }
-                                            onClick={() =>
-                                                this.handleSavePassword()
-                                            }
-                                        />
+                                <TextField
+                                    fieldName="Новый пароль"
+                                    title=""
+                                    validType={ValidTypes.PasswordValid}
+                                    type="password"
+                                    value={form.password}
+                                    onEnd={(ok, v) =>
+                                        handleChange("password", ok, v)
+                                    }
+                                />
+                                <TextField
+                                    fieldName="Новый пароль ещё раз"
+                                    title=""
+                                    validType={ValidTypes.PasswordValid}
+                                    type="password"
+                                    value={form.repeatPassword}
+                                    onEnd={(ok, v) =>
+                                        handleChange("repeatPassword", ok, v)
+                                    }
+                                />
+                                <div
+                                    style={{
+                                        display: "flex",
+                                        justifyContent: "space-between",
+                                        alignItems: "center",
+                                    }}
+                                >
+                                    <div>
+                                        {errors.notRepeatPassword && (
+                                            <span style={{ color: "red" }}>
+                                                Пароли не совпадают!
+                                            </span>
+                                        )}
+                                        {errors.wrongPassword && (
+                                            <span style={{ color: "red" }}>
+                                                Неверный старый пароль!
+                                            </span>
+                                        )}
+                                        {successPassword && (
+                                            <span style={{ color: "green" }}>
+                                                Пароль обновлен
+                                            </span>
+                                        )}
                                     </div>
+                                    <Button
+                                        className="save"
+                                        title="Изменить пароль"
+                                        disabled={
+                                            errors.password ||
+                                            errors.repeatPassword ||
+                                            errors.oldPassword
+                                        }
+                                        onClick={() => handleSavePassword()}
+                                    />
                                 </div>
                             </div>
                         </div>
                     </div>
-                </main>
-                <Footer />
-            </div>
-        );
-    }
+                </div>
+            </main>
+            <Footer />
+        </div>
+    );
 }
+
+export default ProfilePage;
