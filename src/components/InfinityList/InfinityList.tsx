@@ -1,13 +1,23 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useRef } from "react";
 import "./styles.scss";
 
-class InfinityList extends Tarakan.Component {
-    renderFinished(container: any): void {
+interface InfinityListProps {
+    onShow: () => void;
+}
+
+function InfinityList({ onShow }: InfinityListProps) {
+    const containerRef = useRef<HTMLDivElement>(null);
+    const onShowRef = useRef(onShow);
+    onShowRef.current = onShow;
+
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
         const observer = new window.IntersectionObserver(
             ([entry]) => {
                 if (entry.isIntersecting) {
-                    this.props.onShow();
-                    return;
+                    onShowRef.current();
                 }
             },
             {
@@ -17,11 +27,10 @@ class InfinityList extends Tarakan.Component {
         );
 
         observer.observe(container);
-    }
+        return () => observer.disconnect();
+    }, []);
 
-    render() {
-        return <div className="infinity-list"></div>;
-    }
+    return <div className="infinity-list" ref={containerRef}></div>;
 }
 
 export default InfinityList;
