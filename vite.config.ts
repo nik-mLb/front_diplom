@@ -43,6 +43,22 @@ export default defineConfig({
         outDir: "build",
     },
 
+    resolve: {
+        alias: {
+            // package.json этих двух пакетов указывает "module": "./dist/index.mjs",
+            // но публикуется без .mjs-файла (есть только index.js/index.cjs) — esbuild
+            // падает на резолве "module"-поля. Обходим, указывая на реально существующий файл.
+            "bazaar-validation": path.resolve(
+                __dirname,
+                "node_modules/bazaar-validation/dist/index.js",
+            ),
+            "bazaar-ajax": path.resolve(
+                __dirname,
+                "node_modules/bazaar-ajax/dist/index.js",
+            ),
+        },
+    },
+
     server: {
         port: 7500,
         host: "0.0.0.0",
