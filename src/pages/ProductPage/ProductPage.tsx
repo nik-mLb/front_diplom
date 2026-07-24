@@ -53,8 +53,6 @@ function ProductPage() {
     const commentsRef = useRef(comments);
     commentsRef.current = comments;
 
-    const isFirstMountRef = useRef(true);
-
     async function fetchProduct(currentProductId: string) {
         const { code: basketCode, data } = await getBasket();
         let quantity = 0;
@@ -204,13 +202,19 @@ function ProductPage() {
             navigate("/");
             return;
         }
-        if (!isFirstMountRef.current) {
-            window.scroll({
-                top: 0,
-                behavior: "smooth",
-            });
-        }
-        isFirstMountRef.current = false;
+        // Переход на другой товар: скроллим наверх и сбрасываем состояние карточки.
+        // Иначе комментарии нового товара дописываются к старым (fetchReviews
+        // аппендит по офсету), а флаг "показать все комментарии" утекает со старой.
+        // Мгновенно, а не smooth: fetchProduct тут же меняет контент и высота
+        // страницы прыгает — плавный скролл в этот момент браузер гасит.
+        window.scrollTo(0, 0);
+        setShowComments(false);
+        setComments([]);
+        commentsRef.current = [];
+        setCommentsOffset(0);
+        commentsOffsetRef.current = 0;
+        fetchingRef.current = false;
+        setRecommendations([]);
         fetchProduct(productId);
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [productId]);

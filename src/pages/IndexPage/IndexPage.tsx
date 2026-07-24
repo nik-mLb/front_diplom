@@ -6,6 +6,7 @@ import ProductCard from "../../components/ProductCard/ProductCard";
 
 import "./styles.scss";
 import { getProducts } from "../../api/product";
+import { getPersonalRecommendations } from "../../api/recommendation";
 import { getBasket } from "../../api/basket";
 import { AJAXErrors } from "../../api/errors";
 import Alert from "../../components/Alert/Alert";
@@ -20,6 +21,8 @@ function IndexPage() {
     const navigate = useNavigate();
     const [products, setProducts] = useState<any[]>([{ end: true }]);
     const [showNotAuthAlert, setShowNotAuthAlert] = useState(false);
+    const [recommendations, setRecommendations] = useState<any[]>([]);
+    const [recPersonalized, setRecPersonalized] = useState(false);
 
     const fetchingRef = useRef(false);
     const basketRef = useRef<Set<string> | null>(null);
@@ -79,6 +82,25 @@ function IndexPage() {
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, []);
 
+    useEffect(() => {
+        (async () => {
+            const { code, products, personalized } =
+                await getPersonalRecommendations();
+            if (code === AJAXErrors.NoError && products) {
+                setRecPersonalized(!!personalized);
+                setRecommendations(
+                    products.map((item) => ({
+                        ...item,
+                        isInCart: basketRef.current
+                            ? basketRef.current.has(item.id)
+                            : false,
+                    })),
+                );
+            }
+        })();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
     return (
         <div className="container">
             <Header />
@@ -91,6 +113,36 @@ function IndexPage() {
                         onSuccess={() => navigate("/signin")}
                         onClose={() => setShowNotAuthAlert(false)}
                     />
+                )}
+                {recommendations.length > 0 && (
+                    <>
+                        <h1 className="index-page__main-h1">
+                            {recPersonalized
+                                ? "Рекомендуем вам"
+                                : "Популярное"}
+                        </h1>
+                        <div className="index-page__cards-container">
+                            {recommendations.map((item: any) => (
+                                <ProductCard
+                                    key={item.id}
+                                    id={`${item.id}`}
+                                    inCart={item.isInCart}
+                                    price={item.price}
+                                    discountPrice={item.discountPrice}
+                                    title={`${item.name}`}
+                                    rating={item.rating}
+                                    reviewsCount={item.reviewsCount}
+                                    mainImageAlt={`Изображение товара ${item.name}`}
+                                    mainImageSrc={item.image}
+                                    onError={(err) => {
+                                        if (err === AJAXErrors.Unauthorized) {
+                                            setShowNotAuthAlert(true);
+                                        }
+                                    }}
+                                />
+                            ))}
+                        </div>
+                    </>
                 )}
                 <h1 className="index-page__main-h1">Хиты продаж</h1>
                 <div className="index-page__cards-container">

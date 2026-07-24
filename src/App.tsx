@@ -1,4 +1,4 @@
-import { Route, Routes } from "react-router-dom";
+import { Navigate, Route, Routes } from "react-router-dom";
 
 import { UserStoreProvider } from "./stores/UserStore";
 import { ProductsStoreProvider } from "./stores/ProductsStore";
@@ -50,6 +50,10 @@ function App() {
                         element={<SellerFormPage />}
                     />
                     <Route path="/seller" element={<SellerPage />} />
+                    <Route
+                        path="/admin"
+                        element={<Navigate to="/admin/sellers" replace />}
+                    />
                     <Route path="/admin/:tab" element={<AdminPage />} />
                     <Route path="/warehouse" element={<WarehousePage />} />
                     <Route
