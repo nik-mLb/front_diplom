@@ -25,32 +25,41 @@ function IndexPage() {
     const [recPersonalized, setRecPersonalized] = useState(false);
 
     const fetchingRef = useRef(false);
-    const basketRef = useRef<Set<string> | null>(null);
+    const basketPromiseRef = useRef<Promise<Set<string>> | null>(null);
     const offsetRef = useRef(0);
     const productsRef = useRef(products);
     productsRef.current = products;
+
+    // Корзину грузим один раз за монтирование и переиспользуем промис: иначе
+    // блок рекомендаций (один запрос) успевает отрисоваться раньше, чем товары
+    // (два последовательных), и получает пустую корзину.
+    function loadBasket(): Promise<Set<string>> {
+        if (!basketPromiseRef.current) {
+            basketPromiseRef.current = (async () => {
+                const ids = new Set<string>();
+                const basketResponse = await getBasket();
+                if (basketResponse.code === AJAXErrors.NoError) {
+                    basketResponse.data!.products.forEach((item) => {
+                        ids.add(item.productId);
+                    });
+                }
+                return ids;
+            })();
+        }
+        return basketPromiseRef.current;
+    }
 
     async function fetchProducts() {
         if (fetchingRef.current) return;
         fetchingRef.current = true;
 
-        const productsResponse = await getProducts(offsetRef.current);
-
-        let basket = basketRef.current;
-
-        if (basket === null) {
-            const basketResponse = await getBasket();
-            if (basketResponse.code === AJAXErrors.NoError) {
-                basket = new Set();
-                basketResponse.data!.products.map((item) => {
-                    basket!.add(item.productId);
-                });
-            }
-        }
+        const [productsResponse, basket] = await Promise.all([
+            getProducts(offsetRef.current),
+            loadBasket(),
+        ]);
 
         if (productsResponse.code === AJAXErrors.NoError) {
             const newProducts = productsResponse.products ?? [];
-            basketRef.current = basket || new Set();
             const current = productsRef.current;
             const nextProducts = [
                 ...current.slice(0, current.length - 1),
@@ -63,7 +72,7 @@ function IndexPage() {
                         discountPrice: item.discountPrice,
                         reviewsCount: item.reviewsCount,
                         rating: item.rating,
-                        isInCart: basket ? basket.has(item.id) : false,
+                        isInCart: basket.has(item.id),
                     })),
                 ),
                 { end: true },
@@ -84,16 +93,14 @@ function IndexPage() {
 
     useEffect(() => {
         (async () => {
-            const { code, products, personalized } =
-                await getPersonalRecommendations();
+            const [{ code, products, personalized }, basket] =
+                await Promise.all([getPersonalRecommendations(), loadBasket()]);
             if (code === AJAXErrors.NoError && products) {
                 setRecPersonalized(!!personalized);
                 setRecommendations(
                     products.map((item) => ({
                         ...item,
-                        isInCart: basketRef.current
-                            ? basketRef.current.has(item.id)
-                            : false,
+                        isInCart: basket.has(item.id),
                     })),
                 );
             }
