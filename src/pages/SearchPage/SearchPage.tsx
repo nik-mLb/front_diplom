@@ -12,6 +12,7 @@ import StarFilledIcon from "../../shared/images/star-filled-ico.svg";
 
 import "./styles.scss";
 import { getSearchResultByFilters } from "../../api/product";
+import { getBasket } from "../../api/basket";
 import { AJAXErrors } from "../../api/errors";
 import ProductCard from "../../components/ProductCard/ProductCard";
 import InfinityList from "../../components/InfinityList/InfinityList";
@@ -78,16 +79,35 @@ function SearchPage() {
         });
     }
 
+    async function loadBasketIds(): Promise<Set<string>> {
+        const ids = new Set<string>();
+        const basketResponse = await getBasket();
+        if (basketResponse.code === AJAXErrors.NoError) {
+            basketResponse.data!.products.forEach((item) =>
+                ids.add(item.productId),
+            );
+        }
+        return ids;
+    }
+
     async function fetchSearchResult() {
         if (fetchingRef.current) return;
         fetchingRef.current = true;
-        const { code, data } = await getSearchResultByFilters(
-            searchStringRef.current,
-            0,
-            showFiltersRef.current ? (filtersRef.current as any) : ({} as any),
-        );
+        const [{ code, data }, basket] = await Promise.all([
+            getSearchResultByFilters(
+                searchStringRef.current,
+                0,
+                showFiltersRef.current
+                    ? (filtersRef.current as any)
+                    : ({} as any),
+            ),
+            loadBasketIds(),
+        ]);
         if (code === AJAXErrors.NoError) {
-            const newProducts = data!.products.products;
+            const newProducts = data!.products.products.map((item: any) => ({
+                ...item,
+                isInCart: basket.has(item.id),
+            }));
             productsRef.current = newProducts;
             setCategories(data!.categories.categories);
             setProducts(newProducts);
@@ -100,13 +120,24 @@ function SearchPage() {
     async function fetchNext() {
         if (fetchingRef.current) return;
         fetchingRef.current = true;
-        const { code, data } = await getSearchResultByFilters(
-            searchStringRef.current,
-            productsRef.current.length,
-            showFiltersRef.current ? (filtersRef.current as any) : ({} as any),
-        );
+        const [{ code, data }, basket] = await Promise.all([
+            getSearchResultByFilters(
+                searchStringRef.current,
+                productsRef.current.length,
+                showFiltersRef.current
+                    ? (filtersRef.current as any)
+                    : ({} as any),
+            ),
+            loadBasketIds(),
+        ]);
         if (code === AJAXErrors.NoError) {
-            const merged = [...productsRef.current, ...data!.products.products];
+            const merged = [
+                ...productsRef.current,
+                ...data!.products.products.map((item: any) => ({
+                    ...item,
+                    isInCart: basket.has(item.id),
+                })),
+            ];
             productsRef.current = merged;
             setProducts(merged);
             fetchingRef.current = false;

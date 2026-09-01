@@ -103,7 +103,7 @@ export async function getSearchResultByFilters(
     if (filters.sortType !== "default" && filters.sortType)
         request["sort"] = filters.sortType;
     if (filters.minPrice) request["min_price"] = filters.minPrice;
-    if (filters.minPrice) request["max_price"] = filters.maxPrice;
+    if (filters.maxPrice) request["max_price"] = filters.maxPrice;
 
     if (filters.minRating) request["min_rating"] = filters.minRating;
 

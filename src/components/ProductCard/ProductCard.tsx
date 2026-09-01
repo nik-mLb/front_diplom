@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import Button, {
     BUTTON_SIZE,
@@ -30,6 +30,12 @@ interface ProductCardProps {
 function ProductCard(props: ProductCardProps) {
     const navigate = useNavigate();
     const [isInCart, setIsInCart] = useState(!!props.inCart);
+
+    // Корзина может доехать позже первого рендера (родитель грузит её отдельным
+    // запросом), поэтому синхронизируемся с пропом, а не только с инициализатором.
+    useEffect(() => {
+        setIsInCart(!!props.inCart);
+    }, [props.inCart]);
 
     async function handleAddToCart(itemId: string) {
         const code = await addToBasket(itemId);
