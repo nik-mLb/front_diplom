@@ -1,4 +1,4 @@
-import Tarakan from "bazaar-tarakan";
+import { Fragment, useEffect, useReducer, useRef, type ReactNode } from "react";
 import "./styles.scss";
 
 function calculateColumns(
@@ -12,9 +12,9 @@ function calculateColumns(
 }
 
 async function fill(
-    n,
-    container,
-    func,
+    n: number,
+    container: HTMLDivElement,
+    func: (count: number) => Promise<number>,
     minmax: number,
     rowGap: number,
     columnGap: number,
@@ -32,143 +32,181 @@ async function fill(
     }
 }
 
-class RightInfinityList extends Tarakan.Component {
-    state = {
-        items: [],
-        startIndex: 0,
-        endIndex: 0,
-        finished: false,
-        blocked: false,
-    };
+interface RightInfinityListProps {
+    className?: string;
+    builder: (item: any, index: number) => ReactNode;
+    onLoad: (offset: number) => Promise<any[]>;
+    elementMinWidth: number;
+    offsetRow: number;
+    offsetCol: number;
+}
 
-    statelessProps = ["builder"];
+function RightInfinityList(props: RightInfinityListProps) {
+    const propsRef = useRef(props);
+    propsRef.current = props;
 
-    async handleScroll(container: HTMLDivElement) {
+    const containerRef = useRef<HTMLDivElement>(null);
+
+    const itemsRef = useRef<any[]>([]);
+    const startIndexRef = useRef(0);
+    const endIndexRef = useRef(0);
+    const finishedRef = useRef(false);
+    const blockedRef = useRef(false);
+
+    const [, forceRender] = useReducer((x) => x + 1, 0);
+
+    function setListState(patch: {
+        items?: any[];
+        startIndex?: number;
+        endIndex?: number;
+        finished?: boolean;
+        blocked?: boolean;
+    }) {
+        if (patch.items !== undefined) itemsRef.current = patch.items;
+        if (patch.startIndex !== undefined)
+            startIndexRef.current = patch.startIndex;
+        if (patch.endIndex !== undefined) endIndexRef.current = patch.endIndex;
+        if (patch.finished !== undefined) finishedRef.current = patch.finished;
+        if (patch.blocked !== undefined) blockedRef.current = patch.blocked;
+        forceRender();
+    }
+
+    function clearPrevious(count: number) {
+        setListState({ startIndex: startIndexRef.current + count });
+    }
+
+    function renderPrevious(count: number) {
+        setListState({ startIndex: startIndexRef.current - count });
+    }
+
+    function clearNext(count: number) {
+        setListState({
+            endIndex: endIndexRef.current - count,
+            finished: false,
+        });
+    }
+
+    async function renderNext(count: number): Promise<number> {
+        if (finishedRef.current || blockedRef.current) return 0;
+        blockedRef.current = true;
+        const addCount = count;
+        count -= itemsRef.current.length - endIndexRef.current;
+        if (count > 0) {
+            const newItems: any[] = [];
+            while (count > 0) {
+                const loaded = await propsRef.current.onLoad(
+                    itemsRef.current.length + newItems.length,
+                );
+                if (loaded.length === 0) break;
+                newItems.push(...loaded);
+                count = Math.max(count - loaded.length, 0);
+            }
+            const updatedItems = [...itemsRef.current, ...newItems];
+            setListState({
+                items: updatedItems,
+                endIndex:
+                    count > 0
+                        ? updatedItems.length
+                        : endIndexRef.current + addCount,
+                finished: count > 0,
+                blocked: false,
+            });
+            return Math.min(newItems.length, addCount);
+        }
+        setListState({
+            endIndex: endIndexRef.current + addCount,
+            blocked: false,
+        });
+        return addCount;
+    }
+
+    async function handleScroll(container: HTMLDivElement) {
         const rect = container.getBoundingClientRect();
         const heightOffset = rect.top;
-        const firstChild: any = container.firstChild;
+        const firstChild = container.firstChild as HTMLElement | null;
 
         if (!firstChild) return;
 
-        const height = firstChild.clientHeight + this.props.offsetRow;
+        const height = firstChild.clientHeight + propsRef.current.offsetRow;
         const cols = calculateColumns(
             container,
-            this.props.elementMinWidth,
-            this.props.offsetRow,
-            this.props.offsetCol,
+            propsRef.current.elementMinWidth,
+            propsRef.current.offsetRow,
+            propsRef.current.offsetCol,
         );
-        const realCols = this.state.endIndex - this.state.startIndex;
+        const realCols = endIndexRef.current - startIndexRef.current;
 
         if (-heightOffset > height) {
-            this.clearPrevious(cols - (realCols > cols ? 0 : realCols % cols));
+            clearPrevious(cols - (realCols > cols ? 0 : realCols % cols));
             container.style.marginTop =
                 (parseInt(container.style.marginTop) || 0) + height + "px";
         } else if (
-            heightOffset >= this.props.offsetRow / 2 &&
-            this.state.startIndex > 0
+            heightOffset >= propsRef.current.offsetRow / 2 &&
+            startIndexRef.current > 0
         ) {
-            this.renderPrevious(cols - (realCols > cols ? 0 : realCols % cols));
+            renderPrevious(cols - (realCols > cols ? 0 : realCols % cols));
             container.style.marginTop =
                 (parseInt(container.style.marginTop) || 0) - height + "px";
         } else if (
             rect.bottom - window.innerHeight <= 0 &&
-            !this.state.blocked
+            !blockedRef.current
         ) {
-            await this.renderNext(cols - (realCols % cols));
+            await renderNext(cols - (realCols % cols));
             container.style.marginBottom =
                 Math.max(
                     0,
                     (parseInt(container.style.marginBottom) || 0) - height,
                 ) + "px";
         } else if (rect.bottom - window.innerHeight > height) {
-            this.clearNext(
-                this.state.endIndex != this.state.items.length
+            clearNext(
+                endIndexRef.current != itemsRef.current.length
                     ? cols
-                    : this.state.items.length % cols,
+                    : itemsRef.current.length % cols,
             );
             container.style.marginBottom =
                 (parseInt(container.style.marginBottom) || 0) + height + "px";
         }
     }
 
-    renderFinished(container: HTMLDivElement): void {
-        document.addEventListener("scroll", () => this.handleScroll(container));
-        window.addEventListener("resize", () => this.handleScroll(container));
+    useEffect(() => {
+        const container = containerRef.current;
+        if (!container) return;
+
+        const onScroll = () => handleScroll(container);
+        const onResize = () => handleScroll(container);
+        document.addEventListener("scroll", onScroll);
+        window.addEventListener("resize", onResize);
+
         fill(
             0,
             container,
-            (n) => this.renderNext(n),
-            this.props.elementMinWidth,
-            this.props.offsetRow,
-            this.props.offsetCol,
+            (n) => renderNext(n),
+            propsRef.current.elementMinWidth,
+            propsRef.current.offsetRow,
+            propsRef.current.offsetCol,
         );
-    }
 
-    clearPrevious(count) {
-        this.setState({
-            startIndex: this.state.startIndex + count,
-        });
-    }
+        return () => {
+            document.removeEventListener("scroll", onScroll);
+            window.removeEventListener("resize", onResize);
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
-    renderPrevious(count) {
-        this.setState({
-            startIndex: this.state.startIndex - count,
-        });
-    }
-
-    clearNext(count) {
-        this.setState({
-            endIndex: this.state.endIndex - count,
-            finished: false,
-        });
-    }
-
-    async renderNext(count) {
-        if (this.state.finished || this.state.blocked) return;
-        this.state.blocked = true;
-        const addCount = count;
-        count -= this.state.items.length - this.state.endIndex;
-        if (count > 0) {
-            const items = [];
-            while (count > 0) {
-                const newItems = await this.props.onLoad(
-                    this.state.items.length + items.length,
-                );
-                if (newItems.length === 0) {
-                    break;
-                }
-                items.push(...newItems);
-                count = Math.max(count - newItems.length, 0);
-            }
-            this.setState({
-                items: [...this.state.items, ...items],
-                endIndex:
-                    count > 0
-                        ? this.state.items.length + items.length
-                        : this.state.endIndex + addCount,
-                finished: count > 0,
-                blocked: false,
-            });
-            return Math.min(items.length, addCount);
-        }
-        this.setState({
-            endIndex: this.state.endIndex + addCount,
-            blocked: false,
-        });
-        return addCount;
-    }
-
-    render() {
-        return (
-            <div className={`infinity-list ${this.props.className}`.trim()}>
-                {this.state.items
-                    .slice(this.state.startIndex, this.state.endIndex)
-                    .map((e, I) =>
-                        this.props.builder(e, I + this.state.startIndex),
-                    )}
-            </div>
-        );
-    }
+    return (
+        <div
+            className={`infinity-list ${props.className}`.trim()}
+            ref={containerRef}
+        >
+            {itemsRef.current
+                .slice(startIndexRef.current, endIndexRef.current)
+                .map((e, I) => (
+                    <Fragment key={I + startIndexRef.current}>
+                        {props.builder(e, I + startIndexRef.current)}
+                    </Fragment>
+                ))}
+        </div>
+    );
 }
 
 export default RightInfinityList;

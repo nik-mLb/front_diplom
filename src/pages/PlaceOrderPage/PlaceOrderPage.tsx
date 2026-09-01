@@ -1,4 +1,5 @@
-import Tarakan, { Reference } from "bazaar-tarakan";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import Button from "../../components/Button/Button";
 
 import "./styles.scss";
@@ -18,271 +19,240 @@ import { AJAXErrors } from "../../api/errors";
 import { calculateOrderParams, sendOrder } from "../../api/order";
 import { getUserAddresses } from "../../api/address";
 import SuccessModal from "../../components/SuccessModal/SuccessModal";
-import TextField from "../../components/TextField/TextField";
+import TextField, { type TextFieldHandle } from "../../components/TextField/TextField";
 
 import { checkPromocode } from "../../api/promocode";
+import { useUserStore } from "../../stores/UserStore";
 
-class PlaceOrderPage extends Tarakan.Component {
-    state = {
-        total: 0,
-        discount: 0,
-        activeAddress: "",
-        addAddressModalOpened: false,
-        addresses: [],
-        successMessageOpened: false,
+function showBeautifulNumber(value: number) {
+    return value.toLocaleString("ru");
+}
 
-        promocode: "",
-        promocodePercent: null,
-        promocodeTextField: new Reference(),
-        promocodeSuccessStatus: 0,
-    };
+function PlaceOrderPage() {
+    const navigate = useNavigate();
+    const userStore = useUserStore();
 
-    showBeautifulNumber(value: number) {
-        return value.toLocaleString("ru");
-    }
+    const [total, setTotal] = useState(0);
+    const [discount, setDiscount] = useState(0);
+    const [activeAddress, setActiveAddress] = useState("");
+    const [addAddressModalOpened, setAddAddressModalOpened] = useState(false);
+    const [addresses, setAddresses] = useState<any[]>([]);
+    const [successMessageOpened, setSuccessMessageOpened] = useState(false);
 
-    async fetchOrder() {
+    const [promocode, setPromocode] = useState("");
+    const [promocodePercent, setPromocodePercent] = useState<number | null>(
+        null,
+    );
+    const [promocodeSuccessStatus, setPromocodeSuccessStatus] = useState(0);
+    const promocodeTextFieldRef = useRef<TextFieldHandle>(null);
+
+    async function fetchOrder() {
         const { code, parametres } = await calculateOrderParams();
         if (code === AJAXErrors.NoError) {
-            this.setState({
-                total: parametres.price,
-                discount: parametres.discountPrice,
-            });
+            setTotal(parametres!.price);
+            setDiscount(parametres!.discountPrice);
         } else {
-            this.app.navigateTo("/signin");
+            navigate("/signin");
         }
     }
 
-    async fetchAddresses() {
-        const { code, addresses } = await getUserAddresses();
+    async function fetchAddresses() {
+        const { code, addresses: newAddresses } = await getUserAddresses();
         if (code === AJAXErrors.NoError) {
-            this.setState({
-                addAddressModalOpened: false,
-                addresses: addresses,
-                activeAddress:
-                    addresses.length === 1
-                        ? addresses[0].id
-                        : this.state.activeAddress,
-            });
+            setAddAddressModalOpened(false);
+            setAddresses(newAddresses!);
+            if (newAddresses!.length === 1) {
+                setActiveAddress(newAddresses![0].id);
+            }
         } else {
-            this.app.navigateTo("/signin");
+            navigate("/signin");
         }
     }
 
-    async handlePlaceOrder() {
+    useEffect(() => {
+        fetchOrder();
+        fetchAddresses();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    async function handlePlaceOrder() {
         const code = await sendOrder({
             payType: "money",
-            address: this.state.activeAddress,
-            promocode: this.state.promocode,
+            address: activeAddress,
+            promocode: promocode,
         });
 
         if (code === AJAXErrors.NoError) {
-            this.setState({
-                successMessageOpened: true,
-            });
-            this.app.store.user.sendAction("getNofitications");
+            setSuccessMessageOpened(true);
+            userStore.getNofitications();
         }
     }
 
-    async handleCheckPromocode() {
-        this.state.promocodeTextField.target.changeStatus("default");
-        this.setState({ promocodeSuccessStatus: 1 });
-        const { code, data } = await checkPromocode(this.state.promocode);
+    async function handleCheckPromocode() {
+        promocodeTextFieldRef.current!.changeStatus("default");
+        setPromocodeSuccessStatus(1);
+        const { code, data } = await checkPromocode(promocode);
         if (code === AJAXErrors.NoError) {
-            if (data.valid) {
-                this.state.promocodeTextField.target.changeStatus("success");
-                this.setState({
-                    promocodeSuccessStatus: 3,
-                    promocodePercent: data.percent,
-                });
+            if (data!.valid) {
+                promocodeTextFieldRef.current!.changeStatus("success");
+                setPromocodeSuccessStatus(3);
+                setPromocodePercent(data!.percent ?? null);
             } else {
-                this.state.promocodeTextField.target.changeStatus("invalid");
-                this.setState({
-                    promocodeSuccessStatus: 2,
-                    promocodePercent: null,
-                });
+                promocodeTextFieldRef.current!.changeStatus("invalid");
+                setPromocodeSuccessStatus(2);
+                setPromocodePercent(null);
             }
         }
     }
 
-    async handleChangePromocode(newPromocode) {
-        this.state.promocodeTextField.target.changeStatus("default");
-        this.setState({ promocodeSuccessStatus: 0, promocode: newPromocode });
+    function handleChangePromocode(newPromocode: string) {
+        promocodeTextFieldRef.current!.changeStatus("default");
+        setPromocodeSuccessStatus(0);
+        setPromocode(newPromocode);
     }
 
-    init() {
-        this.fetchOrder();
-        this.fetchAddresses();
-    }
-
-    render() {
-        return (
-            <div className="place-order-page">
-                {this.state.successMessageOpened && <SuccessModal />}
-                <Header />
-                <main>
-                    <h1>Оформление заказа</h1>
-                    <div className="content">
-                        <div className="content__settings">
-                            <h2>Способ оплаты</h2>
-                            <div className="content__settings__payment-types">
-                                <PaymentType
-                                    icon={moneyIcon}
-                                    name="Наличными"
-                                    active={true}
-                                />
-                                <PaymentType
-                                    icon={spbIcon}
-                                    name="СПБ"
-                                    disabled={true}
-                                />
-                            </div>
-                            <div className="content__settings__promocode">
-                                <h2>Промокод</h2>
-                                <div className="content__settings__promocode__value">
-                                    <TextField
-                                        ref={this.state.promocodeTextField}
-                                        title="Промокод"
-                                        onChange={(v) =>
-                                            this.handleChangePromocode(
-                                                v.target.value,
-                                            )
-                                        }
-                                    />
-                                    <Button
-                                        title="Проверить"
-                                        disabled={
-                                            this.state.promocodeSuccessStatus %
-                                                2 !==
-                                                0 || this.state.promocode == ""
-                                        }
-                                        onClick={() =>
-                                            this.handleCheckPromocode()
-                                        }
-                                    />
-                                    {this.state.promocodeSuccessStatus ===
-                                        1 && (
-                                        <img
-                                            className="content__settings__promocode__value__loading"
-                                            src={loadingIcon}
-                                        />
-                                    )}
-                                </div>
-                                {this.state.promocodeSuccessStatus === 2 && (
-                                    <div style="color: red">
-                                        Промокод не найден или недействителен
-                                    </div>
-                                )}
-                            </div>
-                            <div className="content__settings__address-title">
-                                <h2>Адрес доставки</h2>
-                                <Button
-                                    className="content__settings__address-title__add-address-button"
-                                    title="Добавить адрес"
-                                    variant="text"
-                                    onClick={() =>
-                                        this.setState({
-                                            addAddressModalOpened: true,
-                                        })
+    return (
+        <div className="place-order-page">
+            {successMessageOpened && <SuccessModal />}
+            <Header />
+            <main>
+                <h1>Оформление заказа</h1>
+                <div className="content">
+                    <div className="content__settings">
+                        <h2>Способ оплаты</h2>
+                        <div className="content__settings__payment-types">
+                            <PaymentType
+                                icon={moneyIcon}
+                                name="Наличными"
+                                active={true}
+                            />
+                            <PaymentType
+                                icon={spbIcon}
+                                name="СПБ"
+                                disabled={true}
+                            />
+                        </div>
+                        <div className="content__settings__promocode">
+                            <h2>Промокод</h2>
+                            <div className="content__settings__promocode__value">
+                                <TextField
+                                    ref={promocodeTextFieldRef}
+                                    title="Промокод"
+                                    onChange={(v) =>
+                                        handleChangePromocode(v.target.value)
                                     }
                                 />
-                            </div>
-                            <div className="content__settings__addresses">
-                                {this.state.addresses.map((address) => (
-                                    <AddressCard
-                                        name={address.label}
-                                        address={address.addressString}
-                                        active={
-                                            this.state.activeAddress ===
-                                            address.id
-                                        }
-                                        onClick={() =>
-                                            this.setState({
-                                                activeAddress: address.id,
-                                            })
-                                        }
+                                <Button
+                                    title="Проверить"
+                                    disabled={
+                                        promocodeSuccessStatus % 2 !== 0 ||
+                                        promocode == ""
+                                    }
+                                    onClick={() => handleCheckPromocode()}
+                                />
+                                {promocodeSuccessStatus === 1 && (
+                                    <img
+                                        className="content__settings__promocode__value__loading"
+                                        src={loadingIcon}
                                     />
-                                ))}
-                                {this.state.addresses.length === 0 && (
-                                    <div className="content__settings__addresses_no-address">
-                                        У вас пока нет ни одного адреса доставки
-                                    </div>
                                 )}
                             </div>
-                            <div className="content__settings__date">
-                                <h2>Срок доставки:</h2>5 рабочих дней
-                            </div>
-                            {this.state.addAddressModalOpened && (
-                                <AddressModal
-                                    opened={this.state.addAddressModalOpened}
-                                    onEnd={(ok) => {
-                                        if (ok) {
-                                            this.fetchAddresses();
-                                        } else {
-                                            this.setState({
-                                                addAddressModalOpened: false,
-                                            });
-                                        }
-                                    }}
-                                    onClose={() => {
-                                        this.setState({
-                                            addAddressModalOpened: false,
-                                        });
-                                    }}
-                                />
+                            {promocodeSuccessStatus === 2 && (
+                                <div style={{ color: "red" }}>
+                                    Промокод не найден или недействителен
+                                </div>
                             )}
                         </div>
-                        <div className="content__total">
+                        <div className="content__settings__address-title">
+                            <h2>Адрес доставки</h2>
                             <Button
-                                className="content__total__make-order"
-                                title="Оформление заказа"
-                                disabled={this.state.activeAddress === ""}
-                                onClick={() => this.handlePlaceOrder()}
+                                className="content__settings__address-title__add-address-button"
+                                title="Добавить адрес"
+                                variant="text"
+                                onClick={() => setAddAddressModalOpened(true)}
                             />
-                            {this.state.total != this.state.discount && (
-                                <div className="content__total__discount">
-                                    <span>Скидка:</span>
-                                    <span className="content__total__discount_cost">
-                                        {this.showBeautifulNumber(
-                                            this.state.total -
-                                                this.state.discount,
-                                        )}
-                                        &nbsp;₽
-                                    </span>
+                        </div>
+                        <div className="content__settings__addresses">
+                            {addresses.map((address) => (
+                                <AddressCard
+                                    key={address.id}
+                                    name={address.label}
+                                    address={address.addressString}
+                                    active={activeAddress === address.id}
+                                    onClick={() =>
+                                        setActiveAddress(address.id)
+                                    }
+                                />
+                            ))}
+                            {addresses.length === 0 && (
+                                <div className="content__settings__addresses_no-address">
+                                    У вас пока нет ни одного адреса доставки
                                 </div>
                             )}
-                            {this.state.promocodePercent && (
-                                <div className="content__total__promocode">
-                                    <span>Промокод:</span>
-                                    <span className="content__total__promocode_cost">
-                                        -{this.state.promocodePercent} %
-                                    </span>
-                                </div>
-                            )}
-                            <div className="content__total__sum-cost">
-                                <span>Итог:</span>
-                                <span className="content__total__sum-cost_cost">
-                                    {this.showBeautifulNumber(
-                                        parseInt(
-                                            (this.state.discount *
-                                                (100 -
-                                                    (this.state
-                                                        .promocodePercent ??
-                                                        0))) /
-                                                100 +
-                                                "",
-                                        ),
-                                    )}
+                        </div>
+                        <div className="content__settings__date">
+                            <h2>Срок доставки:</h2>5 рабочих дней
+                        </div>
+                        {addAddressModalOpened && (
+                            <AddressModal
+                                opened={addAddressModalOpened}
+                                onEnd={(ok) => {
+                                    if (ok) {
+                                        fetchAddresses();
+                                    } else {
+                                        setAddAddressModalOpened(false);
+                                    }
+                                }}
+                                onClose={() => {
+                                    setAddAddressModalOpened(false);
+                                }}
+                            />
+                        )}
+                    </div>
+                    <div className="content__total">
+                        <Button
+                            className="content__total__make-order"
+                            title="Оформление заказа"
+                            disabled={activeAddress === ""}
+                            onClick={() => handlePlaceOrder()}
+                        />
+                        {total != discount && (
+                            <div className="content__total__discount">
+                                <span>Скидка:</span>
+                                <span className="content__total__discount_cost">
+                                    {showBeautifulNumber(total - discount)}
                                     &nbsp;₽
                                 </span>
                             </div>
+                        )}
+                        {promocodePercent && (
+                            <div className="content__total__promocode">
+                                <span>Промокод:</span>
+                                <span className="content__total__promocode_cost">
+                                    -{promocodePercent} %
+                                </span>
+                            </div>
+                        )}
+                        <div className="content__total__sum-cost">
+                            <span>Итог:</span>
+                            <span className="content__total__sum-cost_cost">
+                                {showBeautifulNumber(
+                                    parseInt(
+                                        (discount *
+                                            (100 - (promocodePercent ?? 0))) /
+                                            100 +
+                                            "",
+                                    ),
+                                )}
+                                &nbsp;₽
+                            </span>
                         </div>
                     </div>
-                </main>
-                <Footer />
-            </div>
-        );
-    }
+                </div>
+            </main>
+            <Footer />
+        </div>
+    );
 }
 
 export default PlaceOrderPage;

@@ -1,4 +1,4 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useState, type ChangeEvent } from "react";
 import "./styles.scss";
 
 import invalidIcon from "../../shared/images/textfield-invalid.svg";
@@ -18,107 +18,90 @@ export const TEXTFIELD_TYPES = {
     HIDDEN: "hidden",
 };
 
-class TextArea extends Tarakan.Component {
-    init(initProps: any) {
-        this.state = {
-            status: "default",
-            value: initProps.value,
-        };
-    }
+interface TextAreaProps {
+    title?: string;
+    value?: string;
+    className?: string;
+    fieldName?: string;
+    isDisabled?: boolean;
+    validType?: any;
+    rows?: number;
+    status?: string;
+    onEnd?: (dataOk: boolean, value: string) => void;
+    onChange?: (event: ChangeEvent<HTMLTextAreaElement>) => void;
+    onFocus?: () => void;
+}
 
-    handleEnterFinish() {
+function TextArea(props: TextAreaProps) {
+    const [status, setStatus] = useState("default");
+    const [value, setValue] = useState(props.value ?? "");
+
+    useEffect(() => {
+        if (props.value) setValue(props.value);
+    }, [props.value]);
+
+    useEffect(() => {
+        if (props.status) setStatus(props.status);
+    }, [props.status]);
+
+    function handleEnterFinish() {
         const dataOk =
-            this.props.validType !== undefined
-                ? validate(this.props.validType, this.state.value)
+            props.validType !== undefined
+                ? validate(props.validType, value)
                 : true;
-        if (dataOk) {
-            this.setState({ status: "success" });
-        } else {
-            this.setState({ status: "invalid" });
-        }
-        if (this.props.onEnd) this.props.onEnd(dataOk, this.state.value);
+        setStatus(dataOk ? "success" : "invalid");
+        if (props.onEnd) props.onEnd(dataOk, value);
     }
 
-    handleChange(event: any) {
-        this.setState({ value: event.target.value });
-        if (this.props.onChange) this.props.onChange(event);
+    function handleChange(event: ChangeEvent<HTMLTextAreaElement>) {
+        setValue(event.target.value);
+        if (props.onChange) props.onChange(event);
     }
 
-    handleFocus() {
-        if (this.props.onFocus) this.props.onFocus();
+    function handleFocus() {
+        if (props.onFocus) props.onFocus();
     }
 
-    update(props: any) {
-        if (props.value) {
-            this.setState({ value: props.value }, true);
-        }
-        if (props.status) {
-            this.setState({ status: props.status }, true);
-        }
-    }
+    const placeholder = props.title ?? "Поле ввода";
+    const otherClasses = props.className ?? "";
+    const title = props.fieldName ?? "";
+    const isDisabled = props.isDisabled ?? false;
+    const visibleStatus = props.validType !== undefined ? status : "default";
 
-    render(props: any) {
-        const placeholder = props.title ?? "Поле ввода";
-        const defaultValue = props.value ?? "";
-        const otherClasses = props.className ?? "";
-        const title = props.fieldName ?? "";
-        const isDisabled = props.isDisabled ?? false;
+    const textarea = (
+        <textarea
+            className={`textArea__input textArea__input_${visibleStatus}`}
+            placeholder={placeholder}
+            value={value}
+            disabled={isDisabled}
+            onFocus={handleFocus}
+            onChange={handleChange}
+            onBlur={handleEnterFinish}
+            rows={props.rows}
+        />
+    );
 
-        return title ? (
-            <div className={`textArea_title ${otherClasses}`.trim()}>
-                {title && <h3 className="textArea_title__title">{title}</h3>}
-                <div className="textArea">
-                    <textarea
-                        className={`textArea__input textArea__input_${props.validType !== undefined ? this.state.status : "default"}`}
-                        placeholder={placeholder}
-                        value={defaultValue}
-                        disabled={isDisabled}
-                        onFocus={() => this.handleFocus()}
-                        onChange={(event: any) => this.handleChange(event)}
-                        onBlur={() => this.handleEnterFinish()}
-                        rows={props.rows}
-                    />
-                    {(props.validType !== undefined
-                        ? this.state.status
-                        : "default") !== "default" && (
-                        <img
-                            className="textArea__mark"
-                            src={
-                                this.state.status === "success"
-                                    ? successIcon
-                                    : invalidIcon
-                            }
-                        />
-                    )}
-                </div>
+    const mark = visibleStatus !== "default" && (
+        <img
+            className="textArea__mark"
+            src={status === "success" ? successIcon : invalidIcon}
+        />
+    );
+
+    return title ? (
+        <div className={`textArea_title ${otherClasses}`.trim()}>
+            <h3 className="textArea_title__title">{title}</h3>
+            <div className="textArea">
+                {textarea}
+                {mark}
             </div>
-        ) : (
-            <div className={`textArea ${otherClasses}`.trim()}>
-                <textarea
-                    className={`textArea__input textArea__input_${props.validType !== undefined ? this.state.status : "default"}`}
-                    placeholder={placeholder}
-                    value={defaultValue}
-                    disabled={isDisabled}
-                    onFocus={() => this.handleFocus()}
-                    onChange={(event: any) => this.handleChange(event)}
-                    onBlur={() => this.handleEnterFinish()}
-                    rows={props.rows}
-                />
-                {(props.validType !== undefined
-                    ? this.state.status
-                    : "default") !== "default" && (
-                    <img
-                        className="textArea__mark"
-                        src={
-                            this.state.status === "success"
-                                ? successIcon
-                                : invalidIcon
-                        }
-                    />
-                )}
-            </div>
-        );
-    }
+        </div>
+    ) : (
+        <div className={`textArea ${otherClasses}`.trim()}>
+            {textarea}
+            {mark}
+        </div>
+    );
 }
 
 export default TextArea;

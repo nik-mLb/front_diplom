@@ -1,12 +1,15 @@
-import Tarakan from "bazaar-tarakan";
+import { useEffect, useRef, useState } from "react";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import Header from "../../components/Header/Header";
 import Footer from "../../components/Footer/Footer";
 import { AJAXErrors } from "../../api/errors";
 import { getBasket } from "../../api/basket";
-import { getCategory, getSearchCategoryByFilters } from "../../api/categories";
+import {
+    getCategory,
+    getSearchCategoryByFilters,
+} from "../../api/categories";
 import ProductCard from "../../components/ProductCard/ProductCard";
 
-import CSAT from "../CSAT/CSAT";
 import Alert from "../../components/Alert/Alert";
 import TextField from "../../components/TextField/TextField";
 import Button from "../../components/Button/Button";
@@ -19,358 +22,353 @@ import StarFilledIcon from "../../shared/images/star-filled-ico.svg";
 import "./styles.scss";
 import InfinityList from "../../components/InfinityList/InfinityList";
 
-export default class CategoryPage extends Tarakan.Component {
-    init() {
-        this.state = {
-            fetching: false,
-            products: [],
-            category: {
-                id: this.app.urlParams.id,
-                name: undefined,
-            },
-            csat: false,
-            showNotAuthAlert: false,
+interface CategoryFilters {
+    starsHover: number;
+    minRating: number | string;
+    minPrice: string;
+    maxPrice: string;
+    sortType: string;
+}
 
-            searchString: this.app.queryParams.r ?? "",
-            showFilters: this.app.queryParams.s,
-            filters: {
-                starsHover: 0,
-                minRating: this.app.queryParams.rt ?? 0,
-                minPrice: this.app.queryParams.l ?? "",
-                maxPrice: this.app.queryParams.h ?? "",
-                sortType: this.app.queryParams.s ?? "default",
-            },
-        };
-        this.fetchCategory();
-        this.fetchSearchResult();
-        // setTimeout => this.setState({ csat: true }), 10000);
-    }
+function CategoryPage() {
+    const navigate = useNavigate();
+    const { id } = useParams();
+    const [searchParams] = useSearchParams();
 
-    update() {
-        this.state.products = [];
-        this.fetchCategory();
-        this.fetchSearchResult();
-    }
+    const [category, setCategory] = useState<any>({ id, name: undefined });
+    const [products, setProducts] = useState<any[]>([]);
+    const [showNotAuthAlert, setShowNotAuthAlert] = useState(false);
 
-    async fetchCategory() {
-        const categories = await getCategory(this.app.urlParams.id);
+    const [searchString, setSearchString] = useState(
+        searchParams.get("r") ?? "",
+    );
+    const [showFilters, setShowFilters] = useState(!!searchParams.get("s"));
+    const [filters, setFilters] = useState<CategoryFilters>({
+        starsHover: 0,
+        minRating: searchParams.get("rt") ?? 0,
+        minPrice: searchParams.get("l") ?? "",
+        maxPrice: searchParams.get("h") ?? "",
+        sortType: searchParams.get("s") ?? "default",
+    });
+
+    const productsRef = useRef(products);
+    productsRef.current = products;
+    const searchStringRef = useRef(searchString);
+    searchStringRef.current = searchString;
+    const filtersRef = useRef(filters);
+    filtersRef.current = filters;
+    const showFiltersRef = useRef(showFilters);
+    showFiltersRef.current = showFilters;
+    const fetchingRef = useRef(false);
+
+    async function fetchCategory(categoryId: string) {
+        const categories = await getCategory(categoryId);
         if (categories.code === AJAXErrors.NoError) {
-            this.setState({ category: categories.subcategory });
+            setCategory(categories.subcategory);
         }
     }
 
-    handleSearch() {
-        this.state.products = [];
-        const request = {
-            r: this.state.searchString,
+    function updateFilter(patch: Partial<CategoryFilters>) {
+        const next = { ...filtersRef.current, ...patch };
+        filtersRef.current = next;
+        setFilters(next);
+    }
+
+    function handleSearch() {
+        productsRef.current = [];
+        setProducts([]);
+        const request: Record<string, string> = {
+            r: searchStringRef.current,
         };
-        if (this.state.showFilters) {
-            if (this.state.filters.minRating) {
-                request["rt"] = this.state.filters.minRating;
-            }
-            if (this.state.filters.minPrice) {
-                request["l"] = this.state.filters.minPrice;
-            }
-            if (this.state.filters.maxPrice) {
-                request["h"] = this.state.filters.maxPrice;
-            }
-            if (this.state.filters.sortType) {
-                request["s"] = this.state.filters.sortType;
-            }
+        if (showFiltersRef.current) {
+            if (filtersRef.current.minRating)
+                request.rt = `${filtersRef.current.minRating}`;
+            if (filtersRef.current.minPrice)
+                request.l = filtersRef.current.minPrice;
+            if (filtersRef.current.maxPrice)
+                request.h = filtersRef.current.maxPrice;
+            if (filtersRef.current.sortType)
+                request.s = filtersRef.current.sortType;
         }
-        this.app.navigateTo("/category/" + this.app.urlParams.id, request);
-        this.fetchSearchResult();
+        navigate({
+            pathname: `/category/${id}`,
+            search: `?${new URLSearchParams(request).toString()}`,
+        });
+        fetchSearchResult(id as string);
     }
 
-    async fetchSearchResult() {
-        if (this.state.fetching) return;
-        this.state.fetching = true;
-        const { code, products } = await getSearchCategoryByFilters(
-            this.state.products.length,
-            this.app.urlParams.id,
-            this.state.searchString,
-            this.state.showFilters ? this.state.filters : {},
-        );
+    async function fetchSearchResult(categoryId: string) {
+        if (fetchingRef.current) return;
+        fetchingRef.current = true;
+        const { code, products: newProducts } =
+            await getSearchCategoryByFilters(
+                productsRef.current.length,
+                categoryId,
+                searchStringRef.current,
+                showFiltersRef.current
+                    ? (filtersRef.current as any)
+                    : ({} as any),
+            );
         const basketResponse = await getBasket();
         if (code === AJAXErrors.NoError) {
             const basket = new Set();
             if (basketResponse.code === AJAXErrors.NoError) {
-                const data = basketResponse.data;
-                data.products.map((item) => {
-                    basket.add(item.productId);
-                });
+                basketResponse.data!.products.forEach((item) =>
+                    basket.add(item.productId),
+                );
             }
 
-            this.setState({
-                products: [
-                    ...this.state.products,
-                    ...products.map((item) => ({
-                        ...item,
-                        isInCart: basket.has(item.id),
-                    })),
-                ],
-                fetching: false,
-            });
+            const merged = [
+                ...productsRef.current,
+                ...(newProducts ?? []).map((item: any) => ({
+                    ...item,
+                    isInCart: basket.has(item.id),
+                })),
+            ];
+            productsRef.current = merged;
+            setProducts(merged);
+            fetchingRef.current = false;
         } else {
-            this.state.fetching = false;
+            fetchingRef.current = false;
         }
     }
 
-    render(props, router) {
-        const searchString = router.queryParams.r ?? "";
+    useEffect(() => {
+        if (!id) return;
+        setCategory({ id, name: undefined });
 
-        const sortType = router.queryParams.s ?? "default";
-        const minPrice = router.queryParams.l ?? "";
-        const maxPrice = router.queryParams.h ?? "";
+        const r = searchParams.get("r") ?? "";
+        const s = searchParams.get("s") ?? "";
+        const nextFilters: CategoryFilters = {
+            starsHover: 0,
+            minRating: searchParams.get("rt") ?? 0,
+            minPrice: searchParams.get("l") ?? "",
+            maxPrice: searchParams.get("h") ?? "",
+            sortType: s || "default",
+        };
 
-        return (
-            <div className="container">
-                <Header />
-                {this.state.csat && <CSAT id="Category" />}
-                <main className="category-page category-page_flex category-page_flex_column">
-                    {this.state.showNotAuthAlert && (
-                        <Alert
-                            title="Необходимо войти"
-                            content="Для добавления товаров в корзину, надо сначала войти в профиль"
-                            successButtonTitle="Войти"
-                            onSuccess={() => router.navigateTo("/signin")}
-                            onClose={() =>
-                                this.setState({ showNotAuthAlert: false })
+        setSearchString(r);
+        setShowFilters(!!s);
+        setFilters(nextFilters);
+        searchStringRef.current = r;
+        showFiltersRef.current = !!s;
+        filtersRef.current = nextFilters;
+
+        productsRef.current = [];
+        setProducts([]);
+
+        fetchCategory(id);
+        fetchSearchResult(id);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [id]);
+
+    const urlSearchString = searchParams.get("r") ?? "";
+    const sortType = searchParams.get("s") ?? "default";
+    const minPrice = searchParams.get("l") ?? "";
+    const maxPrice = searchParams.get("h") ?? "";
+
+    return (
+        <div className="container">
+            <Header />
+            <main className="category-page category-page_flex category-page_flex_column">
+                {showNotAuthAlert && (
+                    <Alert
+                        title="Необходимо войти"
+                        content="Для добавления товаров в корзину, надо сначала войти в профиль"
+                        successButtonTitle="Войти"
+                        onSuccess={() => navigate("/signin")}
+                        onClose={() => setShowNotAuthAlert(false)}
+                    />
+                )}
+                <h1 className="category-page__main-h1">{category.name}</h1>
+                <div className="category-page__search">
+                    <div className="category-page__search__field tf-button">
+                        <TextField
+                            className="tf-button__tf"
+                            value={urlSearchString}
+                            onChange={(ev: any) =>
+                                setSearchString(ev.target.value)
                             }
+                            onEnter={() => handleSearch()}
                         />
-                    )}
-                    <h1 className="category-page__main-h1">
-                        {this.state.category.name}
-                    </h1>
-                    <div className="category-page__search">
-                        <div className="category-page__search__field tf-button">
-                            <TextField
-                                className="tf-button__tf"
-                                value={searchString}
-                                onChange={(ev) =>
-                                    this.setState(
-                                        { searchString: ev.target.value },
-                                        false,
-                                    )
-                                }
-                                onEnter={() => this.handleSearch()}
-                            />
-                            <Button
-                                className="tf-button__btn"
-                                iconSrc={SearchIcon}
-                                onClick={() => this.handleSearch()}
+                        <Button
+                            className="tf-button__btn"
+                            iconSrc={SearchIcon}
+                            onClick={() => handleSearch()}
+                        />
+                    </div>
+                    <Button
+                        className="category-page__search__btn success-button"
+                        title={
+                            showFilters
+                                ? "Убрать фильтры"
+                                : "Показать фильтры"
+                        }
+                        onClick={() => {
+                            const next = !showFilters;
+                            showFiltersRef.current = next;
+                            setShowFilters(next);
+                            if (next) {
+                                handleSearch();
+                            }
+                        }}
+                    />
+                </div>
+                {showFilters && (
+                    <div className="category-page__filters">
+                        <div>
+                            <div className="category-page__filters__sort-title">
+                                Сортировать:
+                            </div>
+                            <Select
+                                defaultValue={sortType}
+                                onSelect={(k) => updateFilter({ sortType: k })}
+                                options={[
+                                    {
+                                        key: "default",
+                                        name: "Не сортировать",
+                                    },
+                                    {
+                                        key: "price_asc",
+                                        name: "Сначала дешёвые",
+                                    },
+                                    {
+                                        key: "price_desc",
+                                        name: "Сначала дорогие",
+                                    },
+                                    {
+                                        key: "rating_asc",
+                                        name: "Сначала с низким рейтингом",
+                                    },
+                                    {
+                                        key: "rating_desc",
+                                        name: "Сначала c высоким рейтингом",
+                                    },
+                                ]}
                             />
                         </div>
+
+                        <div className="category-page__filters__sep" />
+
+                        <div>
+                            <div className="category-page__filters__min-price-title">
+                                Цена от
+                            </div>
+                            <TextField
+                                type="number"
+                                title="0"
+                                className="category-page__filters__min-price"
+                                maxLength={7}
+                                value={minPrice}
+                                min={0}
+                                onChange={(ev: any) =>
+                                    updateFilter({
+                                        minPrice: ev.target.value,
+                                    })
+                                }
+                            />
+                            <div className="category-page__filters__max-price-title">
+                                до
+                            </div>
+                            <TextField
+                                type="number"
+                                title="&#8734;"
+                                className="category-page__filters__max-price"
+                                maxLength={7}
+                                min={0}
+                                value={maxPrice}
+                                onChange={(ev: any) =>
+                                    updateFilter({
+                                        maxPrice: ev.target.value,
+                                    })
+                                }
+                            />
+                        </div>
+
+                        <div className="category-page__filters__sep" />
+
+                        <div>
+                            <div className="category-page__filters__rating-title">
+                                Рейтинг от
+                            </div>
+                            <div className="category-page__filters__rating-value">
+                                {Array(5)
+                                    .fill(0)
+                                    .map((_, I) => (
+                                        <img
+                                            key={I}
+                                            className={
+                                                filters.starsHover !== 0 &&
+                                                filters.starsHover <= I &&
+                                                filters.minRating > I
+                                                    ? "review-modal__content__form__rating__value__star removed"
+                                                    : "review-modal__content__form__rating__value__star"
+                                            }
+                                            src={
+                                                filters.starsHover > I ||
+                                                filters.minRating > I
+                                                    ? StarFilledIcon
+                                                    : StarIcon
+                                            }
+                                            onMouseOver={() =>
+                                                updateFilter({
+                                                    starsHover: I + 1,
+                                                })
+                                            }
+                                            onMouseLeave={() =>
+                                                updateFilter({
+                                                    starsHover: 0,
+                                                })
+                                            }
+                                            onClick={() =>
+                                                updateFilter({
+                                                    minRating:
+                                                        filters.starsHover,
+                                                })
+                                            }
+                                        />
+                                    ))}
+                            </div>
+                        </div>
+
                         <Button
-                            className="category-page__search__btn success-button"
-                            title={
-                                this.state.showFilters
-                                    ? "Убрать фильтры"
-                                    : "Показать фильтры"
-                            }
-                            onClick={() => {
-                                this.setState({
-                                    showFilters: !this.state.showFilters,
-                                });
-                                if (!this.state.showFilters) {
-                                    this.handleSearch();
+                            className="category-page__filters__apply-btn"
+                            title="Применить"
+                            onClick={() => handleSearch()}
+                        />
+                    </div>
+                )}
+                <hr className="category-page__sep" />
+                {products.length === 0 &&
+                    "По вашему запросу не удалось найти товары :<("}
+                <div className="category-page__cards-container">
+                    {products.map((item: any) => (
+                        <ProductCard
+                            key={item.id}
+                            id={`${item.id}`}
+                            inCart={item.isInCart}
+                            price={item.price}
+                            discountPrice={item.discount_price}
+                            title={`${item.name}`}
+                            rating={item.rating}
+                            reviewsCount={item.reviews_count}
+                            mainImageAlt={`Изображение товара ${item.name}`}
+                            mainImageSrc={item.image}
+                            onError={(err: any) => {
+                                if (err === AJAXErrors.Unauthorized) {
+                                    setShowNotAuthAlert(true);
                                 }
                             }}
                         />
-                    </div>
-                    {this.state.showFilters && (
-                        <div className="category-page__filters">
-                            <div>
-                                <div className="category-page__filters__sort-title">
-                                    Сортировать:
-                                </div>
-                                <Select
-                                    defaultValue={sortType}
-                                    onSelect={(k) =>
-                                        this.setState(
-                                            {
-                                                filters: {
-                                                    ...this.state.filters,
-                                                    sortType: k,
-                                                },
-                                            },
-                                            false,
-                                        )
-                                    }
-                                    options={[
-                                        {
-                                            key: "default",
-                                            name: "Не сортировать",
-                                        },
-                                        {
-                                            key: "price_asc",
-                                            name: "Сначала дешёвые",
-                                        },
-                                        {
-                                            key: "price_desc",
-                                            name: "Сначала дорогие",
-                                        },
-                                        {
-                                            key: "rating_asc",
-                                            name: "Сначала с низким рейтингом",
-                                        },
-                                        {
-                                            key: "rating_desc",
-                                            name: "Сначала c высоким рейтингом",
-                                        },
-                                    ]}
-                                />
-                            </div>
-
-                            <div className="category-page__filters__sep" />
-
-                            <div>
-                                <div className="category-page__filters__min-price-title">
-                                    Цена от
-                                </div>
-                                <TextField
-                                    type="number"
-                                    title="0"
-                                    className="category-page__filters__min-price"
-                                    maxLength={7}
-                                    value={minPrice}
-                                    min={0}
-                                    onChange={(ev: any) =>
-                                        this.setState(
-                                            {
-                                                filters: {
-                                                    ...this.state.filters,
-                                                    minPrice: ev.target.value,
-                                                },
-                                            },
-                                            false,
-                                        )
-                                    }
-                                />
-                                <div className="category-page__filters__max-price-title">
-                                    до
-                                </div>
-                                <TextField
-                                    type="number"
-                                    title="&#8734;"
-                                    className="category-page__filters__max-price"
-                                    maxLength={7}
-                                    min={0}
-                                    value={maxPrice}
-                                    onChange={(ev: any) =>
-                                        this.setState(
-                                            {
-                                                filters: {
-                                                    ...this.state.filters,
-                                                    maxPrice: ev.target.value,
-                                                },
-                                            },
-                                            false,
-                                        )
-                                    }
-                                />
-                            </div>
-
-                            <div className="category-page__filters__sep" />
-
-                            <div>
-                                <div className="category-page__filters__rating-title">
-                                    Рейтинг от
-                                </div>
-                                <div className="category-page__filters__rating-value">
-                                    {Array(5)
-                                        .fill(0)
-                                        .map((E, I) => (
-                                            <img
-                                                className={
-                                                    this.state.filters
-                                                        .starsHover !== 0 &&
-                                                    this.state.filters
-                                                        .starsHover <= I &&
-                                                    this.state.filters
-                                                        .minRating > I
-                                                        ? "review-modal__content__form__rating__value__star removed"
-                                                        : "review-modal__content__form__rating__value__star"
-                                                }
-                                                src={
-                                                    this.state.filters
-                                                        .starsHover > I ||
-                                                    this.state.filters
-                                                        .minRating > I
-                                                        ? StarFilledIcon
-                                                        : StarIcon
-                                                }
-                                                onMouseOver={() =>
-                                                    this.setState({
-                                                        filters: {
-                                                            ...this.state
-                                                                .filters,
-                                                            starsHover: I + 1,
-                                                        },
-                                                    })
-                                                }
-                                                onMouseLeave={() =>
-                                                    this.setState({
-                                                        filters: {
-                                                            ...this.state
-                                                                .filters,
-                                                            starsHover: 0,
-                                                        },
-                                                    })
-                                                }
-                                                onClick={() =>
-                                                    this.setState({
-                                                        filters: {
-                                                            ...this.state
-                                                                .filters,
-                                                            minRating:
-                                                                this.state
-                                                                    .filters
-                                                                    .starsHover,
-                                                        },
-                                                    })
-                                                }
-                                            />
-                                        ))}
-                                </div>
-                            </div>
-
-                            <Button
-                                className="category-page__filters__apply-btn"
-                                title={"Применить"}
-                                onClick={() => this.handleSearch()}
-                            />
-                        </div>
-                    )}
-                    <hr className="category-page__sep" />
-                    {this.state.products.length === 0 &&
-                        "По вашему запросу не удалось найти товары :<("}
-                    <div className="category-page__cards-container">
-                        {this.state.products.map((item) => (
-                            <ProductCard
-                                id={`${item.id}`}
-                                inCart={item.isInCart}
-                                price={`${item.price}`}
-                                discountPrice={item.discount_price}
-                                title={`${item.name}`}
-                                rating={`${item.rating}`}
-                                reviewsCount={`${item.reviews_count}`}
-                                mainImageAlt={`Изображение товара ${item.name}`}
-                                mainImageSrc={item.image}
-                                onError={(err: any) => {
-                                    if (err === AJAXErrors.Unauthorized) {
-                                        this.setState({
-                                            showNotAuthAlert: true,
-                                        });
-                                    }
-                                }}
-                            />
-                        ))}
-                    </div>
-                    <InfinityList onShow={() => this.fetchSearchResult()} />
-                </main>
-                <Footer />
-            </div>
-        );
-    }
+                    ))}
+                </div>
+                <InfinityList
+                    onShow={() => fetchSearchResult(id as string)}
+                />
+            </main>
+            <Footer />
+        </div>
+    );
 }
+
+export default CategoryPage;

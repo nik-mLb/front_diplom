@@ -1,127 +1,131 @@
-import Tarakan from "bazaar-tarakan";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import validate from "bazaar-validation";
 import TextField from "../TextField/TextField";
-class Form extends Tarakan.Component {
-    deepProps = ["form"];
 
-    init(initProps: any) {
-        const initForm = {};
+export interface FormField {
+    id: string;
+    type?: string;
+    validType?: any;
+    title?: string;
+    defaultValue?: string;
+}
 
-        initProps.form.forEach((field: any) => {
+export interface FormHandle {
+    validate: () => Record<string, any> | false;
+    setFieldStatus: (field: string, isInvalid: boolean) => void;
+}
+
+interface FormProps {
+    form: FormField[];
+    className?: string;
+    onEnd?: (invalidField: string) => void;
+    onFieldFocus?: (field: string) => void;
+}
+
+const Form = forwardRef<FormHandle, FormProps>(function Form(props, ref) {
+    const [form, setForm] = useState<Record<string, any>>(() => {
+        const initForm: Record<string, any> = {};
+        props.form.forEach((field) => {
             if (field.defaultValue !== "") {
                 initForm[field.id] = field.defaultValue;
             }
         });
+        return initForm;
+    });
+    const [invalidFields, setInvalidFields] = useState<
+        Record<string, boolean>
+    >({});
 
-        this.state = {
-            invalidFields: {},
-            form: initForm,
+    const formRef = useRef(form);
+    formRef.current = form;
+    const invalidFieldsRef = useRef(invalidFields);
+    invalidFieldsRef.current = invalidFields;
+
+    function setFieldStatus(field: string, isInvalid: boolean) {
+        const next = { ...invalidFieldsRef.current, [field]: isInvalid };
+        invalidFieldsRef.current = next;
+        setInvalidFields(next);
+    }
+
+    function handleFieldEnd(id: string, isSuccess: boolean, fieldValue: any) {
+        const nextInvalidFields = {
+            ...invalidFieldsRef.current,
+            [id]: !isSuccess,
         };
-    }
-
-    validate() {
-        let invalidField = "";
-        this.props.form.forEach((field: any, index: any) => {
-            const fieldOk =
-                field.validType !== undefined
-                    ? validate(field.validType, this.state.form[field.id] ?? "")
-                    : true;
-            if (!fieldOk) {
-                invalidField ||= field.id;
-            }
-            this.setState(
-                {
-                    invalidFields: {
-                        ...this.state.invalidFields,
-                        [field.id]: !fieldOk,
-                    },
-                    form: {
-                        ...this.state.form,
-                        [field.id]: this.state.form[field.id] ?? "",
-                    },
-                },
-                index !== this.props.form.length - 1,
-            );
-        });
-        if (this.props.onEnd) this.props.onEnd(invalidField);
-        return invalidField === "" ? this.state.form : false;
-    }
-
-    setFieldStatus(field: any, isInvalid: any) {
-        this.setState({
-            invalidFields: {
-                ...this.state.invalidFields,
-                [field]: isInvalid,
-            },
-        });
-    }
-
-    handleChange(event: any) {
-        this.setState({ value: event.target.value });
-    }
-
-    handleFocus(field: any) {
-        if (this.props.onFieldFocus) this.props.onFieldFocus(field);
-    }
-
-    handleFieldEnd(id: any, isSuccess: any, fieldValue: any) {
-        this.setState(
-            {
-                invalidFields: {
-                    ...this.state.invalidFields,
-                    [id]: !isSuccess,
-                },
-                form: {
-                    ...this.state.form,
-                    [id]: fieldValue,
-                },
-            },
-            true,
-        );
+        const nextForm = { ...formRef.current, [id]: fieldValue };
+        invalidFieldsRef.current = nextInvalidFields;
+        formRef.current = nextForm;
+        setInvalidFields(nextInvalidFields);
+        setForm(nextForm);
 
         let invalidField = "";
-        this.props.form.forEach((field: any) => {
+        props.form.forEach((field) => {
             const fieldOk =
                 field.validType !== undefined
-                    ? validate(field.validType, this.state.form[field.id] ?? "")
+                    ? validate(field.validType, nextForm[field.id] ?? "")
                     : true;
-            if (!fieldOk && this.state.invalidFields[field.id] !== undefined) {
+            if (!fieldOk && nextInvalidFields[field.id] !== undefined) {
                 invalidField ||= field.id;
             }
         });
-        if (this.props.onEnd) this.props.onEnd(invalidField);
+        if (props.onEnd) props.onEnd(invalidField);
     }
 
-    render(props) {
-        const otherClasses = props.className ?? "";
-        return (
-            <div className={`${otherClasses}`.trim()}>
-                {props.form.map((formField: any) => (
-                    <TextField
-                        type={formField.type}
-                        validType={formField.validType}
-                        title={formField.title}
-                        value={formField.defaultValue ?? ""}
-                        status={
-                            this.state.invalidFields[formField.id] !== undefined
-                                ? !this.state.invalidFields[formField.id]
-                                    ? "success"
-                                    : "invalid"
-                                : "default"
-                        }
-                        onFocus={() => this.handleFocus(formField.id)}
-                        onEnd={(isSuccess: any, fieldValue: any) =>
-                            this.handleFieldEnd(
-                                formField.id,
-                                isSuccess,
-                                fieldValue,
-                            )
-                        }
-                    />
-                ))}
-            </div>
-        );
-    }
-}
+    useImperativeHandle(ref, () => ({
+        validate: () => {
+            let invalidField = "";
+            const nextForm = { ...formRef.current };
+            const nextInvalidFields = { ...invalidFieldsRef.current };
+
+            props.form.forEach((field) => {
+                const fieldOk =
+                    field.validType !== undefined
+                        ? validate(field.validType, nextForm[field.id] ?? "")
+                        : true;
+                if (!fieldOk) invalidField ||= field.id;
+                nextInvalidFields[field.id] = !fieldOk;
+                nextForm[field.id] = nextForm[field.id] ?? "";
+            });
+
+            formRef.current = nextForm;
+            invalidFieldsRef.current = nextInvalidFields;
+            setForm(nextForm);
+            setInvalidFields(nextInvalidFields);
+
+            if (props.onEnd) props.onEnd(invalidField);
+            return invalidField === "" ? nextForm : false;
+        },
+        setFieldStatus,
+    }));
+
+    const otherClasses = props.className ?? "";
+
+    return (
+        <div className={`${otherClasses}`.trim()}>
+            {props.form.map((formField) => (
+                <TextField
+                    key={formField.id}
+                    type={formField.type}
+                    validType={formField.validType}
+                    title={formField.title}
+                    value={formField.defaultValue ?? ""}
+                    status={
+                        invalidFields[formField.id] !== undefined
+                            ? !invalidFields[formField.id]
+                                ? "success"
+                                : "invalid"
+                            : "default"
+                    }
+                    onFocus={() =>
+                        props.onFieldFocus && props.onFieldFocus(formField.id)
+                    }
+                    onEnd={(isSuccess, fieldValue) =>
+                        handleFieldEnd(formField.id, isSuccess, fieldValue)
+                    }
+                />
+            ))}
+        </div>
+    );
+});
 
 export default Form;

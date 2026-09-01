@@ -1,4 +1,11 @@
-import Tarakan from "bazaar-tarakan";
+import {
+    forwardRef,
+    useEffect,
+    useImperativeHandle,
+    useState,
+    type ChangeEvent,
+    type KeyboardEvent,
+} from "react";
 import "./styles.scss";
 
 import invalidIcon from "../../shared/images/textfield-invalid.svg";
@@ -18,150 +25,127 @@ export const TEXTFIELD_TYPES = {
     HIDDEN: "hidden",
 };
 
-class TextField extends Tarakan.Component {
-    init(initProps: any) {
-        this.state = {
-            status: "default",
-            value: initProps.value ?? "",
-            manuallyChanged: true,
-        };
-    }
+export interface TextFieldHandle {
+    changeStatus: (newStatus: string) => void;
+}
 
-    handleEnterFinish() {
-        if (this.props.validType !== undefined) {
-            let dataOk =
-                this.props.validType !== undefined
-                    ? validate(this.props.validType, this.state.value)
-                    : true;
+interface TextFieldProps {
+    type?: string;
+    title?: string;
+    value?: string;
+    className?: string;
+    fieldName?: string;
+    isDisabled?: boolean;
+    validType?: any;
+    canEmpty?: boolean;
+    maxLength?: number | string;
+    cols?: number;
+    min?: number | string;
+    max?: number | string;
+    status?: string;
+    onEnd?: (dataOk: boolean, value: string) => void;
+    onChange?: (event: ChangeEvent<HTMLInputElement>) => void;
+    onFocus?: () => void;
+    onEnter?: (ev: any) => void;
+    onKeyEnter?: () => void;
+}
 
-            if (this.props.canEmpty && !this.state.value) {
-                dataOk = true;
-                return;
-            }
+const TextField = forwardRef<TextFieldHandle, TextFieldProps>(
+    function TextField(props, ref) {
+        const [status, setStatus] = useState("default");
+        const [value, setValue] = useState(props.value ?? "");
 
-            if (dataOk) {
-                this.setState({ status: "success" });
+        useEffect(() => {
+            if (props.value) setValue(props.value);
+        }, [props.value]);
+
+        useEffect(() => {
+            if (props.status) setStatus(props.status);
+        }, [props.status]);
+
+        useImperativeHandle(ref, () => ({
+            changeStatus: (newStatus: string) => setStatus(newStatus),
+        }));
+
+        function handleEnterFinish() {
+            if (props.validType !== undefined) {
+                if (props.canEmpty && !value) {
+                    return;
+                }
+
+                const dataOk = validate(props.validType, value);
+                setStatus(dataOk ? "success" : "invalid");
+                if (props.onEnd) props.onEnd(dataOk, value);
             } else {
-                this.setState({ status: "invalid" });
+                if (props.onEnd) props.onEnd(true, value);
             }
-            if (this.props.onEnd) this.props.onEnd(dataOk, this.state.value);
-        } else {
-            if (this.props.onEnd) this.props.onEnd(true, this.state.value);
         }
-    }
 
-    handleChange(event: any) {
-        this.setState({ value: event.target.value });
-        if (this.props.onChange) this.props.onChange(event);
-    }
-
-    handleFocus() {
-        if (this.props.onFocus) {
-            this.props.onFocus();
+        function handleChange(event: ChangeEvent<HTMLInputElement>) {
+            setValue(event.target.value);
+            if (props.onChange) props.onChange(event);
         }
-    }
 
-    update(props: any) {
-        if (props.value) {
-            this.setState({ value: props.value ?? "" }, true);
+        function handleFocus() {
+            if (props.onFocus) {
+                props.onFocus();
+            }
         }
-        if (props.status) {
-            this.setState({ status: props.status }, true);
+
+        function handleKeyDown(event: KeyboardEvent<HTMLInputElement>) {
+            if (event.key === "Enter") {
+                if (props.onKeyEnter) {
+                    props.onKeyEnter();
+                }
+            }
         }
-    }
 
-    changeStatus(newStatus: string) {
-        this.setState({ status: newStatus });
-    }
-
-    render(props: any) {
         const type = props.type ?? TEXTFIELD_TYPES.TEXT;
         const placeholder = props.title ?? "Поле ввода";
-        const defaultValue = props.value ?? "";
         const otherClasses = props.className ?? "";
         const title = props.fieldName ?? "";
         const isDisabled = props.isDisabled ?? false;
 
+        const input = (
+            <input
+                className={`textField__input textField__input_${status}`}
+                type={type}
+                placeholder={placeholder}
+                value={value}
+                disabled={isDisabled}
+                onFocus={handleFocus}
+                onChange={handleChange}
+                onBlur={handleEnterFinish}
+                onKeyDown={handleKeyDown}
+                maxLength={props.maxLength ?? "255"}
+                cols={props.cols}
+                min={props.min}
+                max={props.max}
+            />
+        );
+
+        const mark = status !== "default" && (
+            <img
+                className="textField__mark"
+                src={status === "success" ? successIcon : invalidIcon}
+            />
+        );
+
         return title ? (
             <div className={`textField_title ${otherClasses}`.trim()}>
-                {title && <h3 className="textField_title__title">{title}</h3>}
+                <h3 className="textField_title__title">{title}</h3>
                 <div className="textField">
-                    <input
-                        className={`textField__input textField__input_${props.validType !== undefined || this.state.manuallyChanged ? this.state.status : "default"}`}
-                        type={type}
-                        placeholder={placeholder}
-                        value={defaultValue}
-                        disabled={isDisabled}
-                        onFocus={() => this.handleFocus()}
-                        onChange={(event: any) => this.handleChange(event)}
-                        onBlur={() => this.handleEnterFinish()}
-                        onEnd={(ev) => props.onEnter && props.onEnter(ev)}
-                        onkeydown={(ev) => {
-                            if (ev.key === "Enter") {
-                                if (props.onKeyEnter) {
-                                    props.onKeyEnter();
-                                }
-                            }
-                        }}
-                        maxLength={props.maxLength ?? "255"}
-                        cols={props.cols}
-                        min={props.min}
-                        max={props.max}
-                    />
-                    {(props.validType !== undefined ||
-                    this.state.manuallyChanged
-                        ? this.state.status
-                        : "default") !== "default" && (
-                        <img
-                            className="textField__mark"
-                            src={
-                                this.state.status === "success"
-                                    ? successIcon
-                                    : invalidIcon
-                            }
-                        />
-                    )}
+                    {input}
+                    {mark}
                 </div>
             </div>
         ) : (
             <div className={`textField ${otherClasses}`.trim()}>
-                <input
-                    className={`textField__input textField__input_${props.validType !== undefined || this.state.manuallyChanged ? this.state.status : "default"}`}
-                    type={type}
-                    placeholder={placeholder}
-                    value={defaultValue}
-                    disabled={isDisabled}
-                    onFocus={() => this.handleFocus()}
-                    onChange={(event: any) => this.handleChange(event)}
-                    onBlur={() => this.handleEnterFinish()}
-                    onEnd={(ev) => props.onEnter && props.onEnter(ev)}
-                    onkeydown={(ev) => {
-                        if (ev.key === "Enter") {
-                            if (props.onKeyEnter) {
-                                props.onKeyEnter();
-                            }
-                        }
-                    }}
-                    maxLength={props.maxLength ?? "255"}
-                    cols={props.cols}
-                    min={props.min}
-                    max={props.max}
-                />
-                {(props.validType !== undefined || this.state.manuallyChanged
-                    ? this.state.status
-                    : "default") !== "default" && (
-                    <img
-                        className="textField__mark"
-                        src={
-                            this.state.status === "success"
-                                ? successIcon
-                                : invalidIcon
-                        }
-                    />
-                )}
+                {input}
+                {mark}
             </div>
         );
-    }
-}
+    },
+);
 
 export default TextField;
